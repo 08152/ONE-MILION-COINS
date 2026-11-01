@@ -6,6 +6,22 @@ function createCoinMachine(THREE, options = {}) {
     const height = options.height ?? 2.3;
     const depth = options.depth ?? 1.7;
 
+    const interactionDistance = options.interactionDistance ?? 3.5;
+
+    // Inventar-Anbindung
+    const getCoins = options.getCoins ?? (() => {
+        return options.inventory?.coins ?? 0;
+    });
+
+    const removeCoins = options.removeCoins ?? ((amount) => {
+        if (options.inventory) {
+            options.inventory.coins = Math.max(
+                0,
+                (options.inventory.coins ?? 0) - amount
+            );
+        }
+    });
+
     const steel = new THREE.MeshStandardMaterial({
         color: 0x777F83,
         metalness: 0.9,
@@ -54,26 +70,19 @@ function createCoinMachine(THREE, options = {}) {
         return mesh;
     }
 
-    // Hauptgehäuse
-    addBox(
-        width,
-        height,
-        depth,
-        steel,
-        0,
-        height / 2,
-        0
-    );
+    // =========================================
+    // HAUPTGEHÄUSE
+    // =========================================
 
-    // Dunkler Sockel
+    addBox(width, height, depth, steel, 0, height / 2, 0);
+
+    // Sockel
     addBox(
         width + 0.12,
         0.2,
         depth + 0.12,
         darkSteel,
-        0,
-        0.1,
-        0
+        0, 0.1, 0
     );
 
     // Frontplatte
@@ -87,7 +96,10 @@ function createCoinMachine(THREE, options = {}) {
         depth / 2 + 0.035
     );
 
-    // Sichtfenster
+    // =========================================
+    // SICHTFENSTER
+    // =========================================
+
     addBox(
         width * 0.53,
         height * 0.38,
@@ -108,7 +120,6 @@ function createCoinMachine(THREE, options = {}) {
         depth / 2 + 0.1
     );
 
-    // Innere mechanische Walzen hinter dem Fenster
     const internalParts = [];
 
     for (let i = 0; i < 3; i++) {
@@ -118,6 +129,7 @@ function createCoinMachine(THREE, options = {}) {
         );
 
         roller.rotation.z = Math.PI / 2;
+
         roller.position.set(
             -width * 0.12,
             height * 0.55 + i * 0.17,
@@ -165,7 +177,10 @@ function createCoinMachine(THREE, options = {}) {
         );
     }
 
-    // Bedienfeld rechts
+    // =========================================
+    // BEDIENFELD
+    // =========================================
+
     const panelX = width * 0.31;
 
     addBox(
@@ -178,29 +193,111 @@ function createCoinMachine(THREE, options = {}) {
         depth / 2 + 0.08
     );
 
-    // Digitaldisplay
+    const displayWidth = width * 0.21;
+    const displayHeight = 0.28;
+    const displayY = height * 0.79;
+    const displayZ = depth / 2 + 0.13;
+
     addBox(
-        width * 0.21,
-        0.28,
+        displayWidth,
+        displayHeight,
         0.035,
         displayMaterial,
         panelX,
-        height * 0.79,
-        depth / 2 + 0.13
+        displayY,
+        displayZ
     );
 
-    // Display-Rahmen
     addBox(
         width * 0.23,
         0.32,
         0.025,
         steel,
         panelX,
-        height * 0.79,
+        displayY,
         depth / 2 + 0.11
     );
 
-    // Bedienknöpfe
+    // =========================================
+    // DIGITALES DISPLAY
+    // =========================================
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 512;
+    canvas.height = 256;
+
+    const ctx = canvas.getContext("2d");
+
+    const displayTexture = new THREE.CanvasTexture(canvas);
+
+    displayTexture.colorSpace = THREE.SRGBColorSpace;
+
+    const displayScreen = new THREE.Mesh(
+        new THREE.PlaneGeometry(
+            displayWidth * 0.88,
+            displayHeight * 0.82
+        ),
+        new THREE.MeshBasicMaterial({
+            map: displayTexture,
+            toneMapped: false
+        })
+    );
+
+    displayScreen.position.set(
+        panelX,
+        displayY,
+        depth / 2 + 0.151
+    );
+
+    group.add(displayScreen);
+
+    let depositedCoins = 0;
+    let nearby = false;
+    let isDepositing = false;
+    let depositAnimation = 0;
+
+    function drawDisplay() {
+        ctx.fillStyle = "#07150F";
+        ctx.fillRect(0, 0, 512, 256);
+
+        ctx.fillStyle = "#49F59A";
+        ctx.font = "bold 27px Arial";
+        ctx.textAlign = "center";
+
+        ctx.fillText("COIN MACHINE", 256, 48);
+
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = "bold 51px Arial";
+
+        ctx.fillText(
+            depositedCoins.toLocaleString("de-DE"),
+            256,
+            132
+        );
+
+        ctx.fillStyle = "#67D99A";
+        ctx.font = "23px Arial";
+
+        ctx.fillText("COINS DEPOSITED", 256, 184);
+
+        ctx.fillStyle = "#4A8769";
+        ctx.font = "17px Arial";
+
+        ctx.fillText(
+            isDepositing ? "PROCESSING..." : "SYSTEM ONLINE",
+            256,
+            225
+        );
+
+        displayTexture.needsUpdate = true;
+    }
+
+    drawDisplay();
+
+    // =========================================
+    // BEDIENKNÖPFE
+    // =========================================
+
     const buttons = [];
 
     for (let i = 0; i < 4; i++) {
@@ -227,7 +324,7 @@ function createCoinMachine(THREE, options = {}) {
         buttons.push(button);
     }
 
-    // Not-Aus-Schalter
+    // Not-Aus
     const emergency = new THREE.Mesh(
         new THREE.CylinderGeometry(0.085, 0.09, 0.08, 32),
         new THREE.MeshStandardMaterial({
@@ -238,6 +335,7 @@ function createCoinMachine(THREE, options = {}) {
     );
 
     emergency.rotation.x = Math.PI / 2;
+
     emergency.position.set(
         panelX,
         height * 0.43,
@@ -246,7 +344,10 @@ function createCoinMachine(THREE, options = {}) {
 
     group.add(emergency);
 
-    // Lüftungsschlitze auf der rechten Seite
+    // =========================================
+    // LÜFTUNG
+    // =========================================
+
     for (let i = 0; i < 9; i++) {
         addBox(
             0.32,
@@ -259,7 +360,7 @@ function createCoinMachine(THREE, options = {}) {
         );
     }
 
-    // Metallverschraubungen an der Front
+    // Verschraubungen
     for (const x of [-width * 0.43, width * 0.43]) {
         for (const y of [0.3, height - 0.3]) {
             const bolt = new THREE.Mesh(
@@ -268,17 +369,13 @@ function createCoinMachine(THREE, options = {}) {
             );
 
             bolt.rotation.x = Math.PI / 2;
-            bolt.position.set(
-                x,
-                y,
-                depth / 2 + 0.09
-            );
+            bolt.position.set(x, y, depth / 2 + 0.09);
 
             group.add(bolt);
         }
     }
 
-    // Oberer Anschluss für Trichter
+    // Oberer Trichteranschluss
     const topConnector = new THREE.Mesh(
         new THREE.CylinderGeometry(0.34, 0.34, 0.16, 48),
         darkSteel
@@ -287,7 +384,6 @@ function createCoinMachine(THREE, options = {}) {
     topConnector.position.set(0, height + 0.08, 0);
     group.add(topConnector);
 
-    // Oberer Rohranschluss
     const topOpening = new THREE.Mesh(
         new THREE.CylinderGeometry(0.25, 0.25, 0.17, 48, 1, true),
         steel
@@ -296,27 +392,202 @@ function createCoinMachine(THREE, options = {}) {
     topOpening.position.set(0, height + 0.17, 0);
     group.add(topOpening);
 
-    // Münzausgang vorne
+    // Münzausgang
     const output = new THREE.Mesh(
         new THREE.CylinderGeometry(0.2, 0.27, 0.3, 48),
         darkSteel
     );
 
     output.rotation.x = Math.PI / 2;
+
     output.position.set(
-        0,
-        0.55,
-        depth / 2 + 0.22
+        0, 0.55, depth / 2 + 0.22
     );
 
     group.add(output);
 
-    // Animationsfunktion
+    // =========================================
+    // INTERAKTION: E DRÜCKEN
+    // =========================================
+
+    function getWorldPosition() {
+        return group.getWorldPosition(new THREE.Vector3());
+    }
+
+    function getPlayerPosition() {
+        if (typeof options.getPlayerPosition === "function") {
+            return options.getPlayerPosition();
+        }
+
+        if (options.player) {
+            return options.player.getWorldPosition(
+                new THREE.Vector3()
+            );
+        }
+
+        return null;
+    }
+
+    function canInteract() {
+        return nearby && !isDepositing;
+    }
+
+    function depositCoins() {
+        if (!canInteract()) return 0;
+
+        const amount = Math.max(
+            0,
+            Math.floor(Number(getCoins()) || 0)
+        );
+
+        if (amount <= 0) return 0;
+
+        removeCoins(amount);
+
+        depositedCoins += amount;
+
+        isDepositing = true;
+        depositAnimation = 0.8;
+
+        drawDisplay();
+
+        if (typeof options.onDeposit === "function") {
+            options.onDeposit(amount, depositedCoins);
+        }
+
+        return amount;
+    }
+
+    function handleKeyDown(event) {
+        if (event.code !== "KeyE" || event.repeat) return;
+
+        // Nicht auslösen, wenn gerade in ein Eingabefeld geschrieben wird.
+        const tag = event.target?.tagName;
+
+        if (
+            tag === "INPUT" ||
+            tag === "TEXTAREA" ||
+            event.target?.isContentEditable
+        ) {
+            return;
+        }
+
+        depositCoins();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    // =========================================
+    // INTERAKTIONSANZEIGE
+    // =========================================
+
+    let promptElement = null;
+
+    if (options.showPrompt !== false) {
+        promptElement = document.createElement("div");
+
+        promptElement.style.position = "fixed";
+        promptElement.style.left = "50%";
+        promptElement.style.bottom = "14%";
+        promptElement.style.transform = "translateX(-50%)";
+        promptElement.style.padding = "12px 22px";
+        promptElement.style.background = "rgba(8, 15, 12, 0.9)";
+        promptElement.style.border = "1px solid #49F59A";
+        promptElement.style.borderRadius = "7px";
+        promptElement.style.color = "white";
+        promptElement.style.font = "bold 16px Arial";
+        promptElement.style.zIndex = "9999";
+        promptElement.style.pointerEvents = "none";
+        promptElement.style.display = "none";
+
+        document.body.appendChild(promptElement);
+    }
+
+    function updateInteraction() {
+        const playerPosition = getPlayerPosition();
+
+        if (!playerPosition) {
+            nearby = false;
+
+            if (promptElement) {
+                promptElement.style.display = "none";
+            }
+
+            return;
+        }
+
+        const machinePosition = getWorldPosition();
+
+        const distance = playerPosition.distanceTo(
+            machinePosition
+        );
+
+        nearby = distance <= interactionDistance;
+
+        if (promptElement) {
+            if (nearby) {
+                const coins = Math.max(
+                    0,
+                    Math.floor(Number(getCoins()) || 0)
+                );
+
+                promptElement.style.display = "block";
+
+                promptElement.textContent =
+                    `E  –  Coins einzahlen (${coins.toLocaleString("de-DE")} verfügbar)`;
+            } else {
+                promptElement.style.display = "none";
+            }
+        }
+
+        if (typeof options.onInteractionChange === "function") {
+            options.onInteractionChange(nearby);
+        }
+    }
+
+    // =========================================
+    // UPDATE
+    // =========================================
+
     function update(deltaTime) {
         internalParts.forEach((part, index) => {
-            part.rotation.x += deltaTime * (index % 2 === 0 ? 2 : -2);
+            const speed = isDepositing ? 12 : 2;
+
+            part.rotation.x +=
+                deltaTime * speed * (index % 2 === 0 ? 1 : -1);
         });
+
+        if (depositAnimation > 0) {
+            depositAnimation -= deltaTime;
+
+            if (depositAnimation <= 0) {
+                isDepositing = false;
+                drawDisplay();
+            }
+        }
+
+        updateInteraction();
     }
+
+    // =========================================
+    // AUFRÄUMEN
+    // =========================================
+
+    function dispose() {
+        window.removeEventListener("keydown", handleKeyDown);
+
+        if (promptElement) {
+            promptElement.remove();
+            promptElement = null;
+        }
+
+        displayTexture.dispose();
+        displayScreen.geometry.dispose();
+    }
+
+    // =========================================
+    // SCHATTEN
+    // =========================================
 
     group.traverse(object => {
         if (object.isMesh) {
@@ -325,11 +596,32 @@ function createCoinMachine(THREE, options = {}) {
         }
     });
 
+    // =========================================
+    // RÜCKGABE
+    // =========================================
+
     return {
         group,
         update,
         buttons,
         emergency,
-        internalParts
+        internalParts,
+
+        depositCoins,
+        updateInteraction,
+        canInteract,
+        dispose,
+
+        get depositedCoins() {
+            return depositedCoins;
+        },
+
+        get nearby() {
+            return nearby;
+        },
+
+        get isDepositing() {
+            return isDepositing;
+        }
     };
 }
