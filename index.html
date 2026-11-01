@@ -1,0 +1,1847 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONE MILLION COINS</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #111519;
+    font-family: Arial, sans-serif;
+    color: white;
+}
+
+#game {
+    position: fixed;
+    inset: 0;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+#loading {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #111519;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+#loading h1 {
+    color: #e7b84d;
+    letter-spacing: 5px;
+    font-size: 28px;
+}
+
+#loadingStatus {
+    color: #aeb6bd;
+    margin-top: 15px;
+}
+
+#startScreen {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background: rgba(5,8,12,.88);
+    backdrop-filter: blur(8px);
+}
+
+#startScreen h1 {
+    color: #f0c45e;
+    font-size: clamp(30px, 6vw, 68px);
+    letter-spacing: 5px;
+    text-align: center;
+    margin: 0 15px;
+}
+
+#startScreen p {
+    color: #b8c0c8;
+    margin: 18px;
+}
+
+#startButton {
+    margin-top: 25px;
+    padding: 17px 45px;
+    border: 1px solid #f2c75e;
+    background: linear-gradient(135deg,#a97720,#e3b64e);
+    color: #171717;
+    font-size: 17px;
+    font-weight: bold;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+#startButton:hover {
+    filter: brightness(1.2);
+}
+
+#hud {
+    position: fixed;
+    top: 18px;
+    left: 18px;
+    z-index: 20;
+    background: rgba(10,14,18,.88);
+    border: 1px solid #555b60;
+    border-radius: 9px;
+    padding: 14px 17px;
+    min-width: 210px;
+    pointer-events: none;
+}
+
+.hudTitle {
+    color: #e8bb52;
+    font-weight: bold;
+    font-size: 12px;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+}
+
+.hudRow {
+    display: flex;
+    justify-content: space-between;
+    gap: 25px;
+    margin: 7px 0;
+    font-size: 13px;
+}
+
+.hudValue {
+    color: #f3ce71;
+    font-weight: bold;
+}
+
+#controls {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    z-index: 20;
+    background: rgba(10,14,18,.8);
+    border: 1px solid #414951;
+    border-radius: 8px;
+    padding: 12px 15px;
+    color: #c2c8ce;
+    font-size: 12px;
+    line-height: 1.9;
+    pointer-events: none;
+}
+
+#crosshair {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%,-50%);
+    width: 15px;
+    height: 15px;
+    z-index: 15;
+    pointer-events: none;
+}
+
+#crosshair::before,
+#crosshair::after {
+    content: "";
+    position: absolute;
+    background: rgba(255,255,255,.85);
+}
+
+#crosshair::before {
+    width: 2px;
+    height: 15px;
+    left: 6px;
+}
+
+#crosshair::after {
+    width: 15px;
+    height: 2px;
+    top: 6px;
+}
+
+#performance {
+    position: fixed;
+    left: 18px;
+    bottom: 18px;
+    color: #9da8b0;
+    font-size: 11px;
+    background: rgba(0,0,0,.55);
+    padding: 8px 11px;
+    border-radius: 5px;
+    pointer-events: none;
+}
+
+#toast {
+    position: fixed;
+    top: 25%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    padding: 13px 24px;
+    background: rgba(15,20,24,.95);
+    border: 1px solid #d4a943;
+    border-radius: 7px;
+    color: #f4d17c;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity .2s;
+    pointer-events: none;
+}
+
+#toast.visible {
+    opacity: 1;
+}
+
+#fatalError {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: #171719;
+    color: #ff9999;
+    padding: 30px;
+    white-space: pre-wrap;
+    overflow: auto;
+}
+</style>
+</head>
+
+<body>
+
+<div id="game"></div>
+
+<div id="loading">
+    <h1>ONE MILLION COINS</h1>
+    <div id="loadingStatus">Lade Spielsysteme ...</div>
+</div>
+
+<div id="startScreen">
+    <h1>ONE MILLION COINS</h1>
+    <p>Sammle Coins. Verbessere deine Fähigkeiten. Erreiche eine Million.</p>
+    <button id="startButton">SPIEL STARTEN</button>
+    <p>WASD · Maus · Linksklick · E · Q</p>
+</div>
+
+<div id="hud">
+    <div class="hudTitle">ONE MILLION COINS</div>
+
+    <div class="hudRow">
+        <span>Tasche</span>
+        <span class="hudValue" id="hudCoins">0 / 25</span>
+    </div>
+
+    <div class="hudRow">
+        <span>Eingezahlt</span>
+        <span class="hudValue" id="hudDeposited">0</span>
+    </div>
+
+    <div class="hudRow">
+        <span>Etage</span>
+        <span class="hudValue" id="hudFloor">1 / 10</span>
+    </div>
+
+    <div class="hudRow">
+        <span>Gesammelt</span>
+        <span class="hudValue" id="hudCollected">0</span>
+    </div>
+</div>
+
+<div id="controls">
+    WASD – Bewegen<br>
+    Maus – Umschauen<br>
+    Linksklick – Coin sammeln / Objekt aufnehmen<br>
+    Linksklick halten – Sammeln (Upgrade)<br>
+    Rechtsklick – Objekt werfen<br>
+    E – Coins einzahlen<br>
+    Q – Upgrades
+</div>
+
+<div id="crosshair"></div>
+
+<div id="performance">FPS: -- | Physik: --</div>
+
+<div id="toast"></div>
+
+<div id="fatalError"></div>
+
+<script type="module">
+
+// ==================================================
+// 1. THREE.JS UND CANNON-ES LADEN
+// ==================================================
+
+const THREE = await import(
+    "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+);
+
+const CANNON = await import(
+    "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+);
+
+window.THREE = THREE;
+window.CANNON = CANNON;
+
+
+// ==================================================
+// 2. ALLE SPIELDATEIEN LADEN
+// ==================================================
+
+function loadClassicScript(src) {
+
+    return new Promise((resolve, reject) => {
+
+        const script = document.createElement("script");
+
+        script.src = src;
+        script.async = false;
+
+        script.onload = resolve;
+
+        script.onerror = () => {
+            reject(new Error("Datei konnte nicht geladen werden: " + src));
+        };
+
+        document.head.appendChild(script);
+    });
+}
+
+const files = [
+
+    "coin.js",
+    "COIN_MILION.js",
+
+    "physik.js",
+
+    "bunker.js",
+    "treppe.js",
+
+    "lichter.js",
+
+    "band.js",
+    "trichter.js",
+    "rohr.js",
+
+    "verpackung.js",
+
+    "maschine.js",
+
+    "upgrades.js",
+    "heben_droppen.js",
+
+    "anti_lagg.js"
+];
+
+for (let i = 0; i < files.length; i++) {
+
+    document.getElementById("loadingStatus").textContent =
+        "Lade " + files[i] + " (" + (i + 1) + "/" + files.length + ")";
+
+    await loadClassicScript("./" + files[i]);
+}
+
+
+// ==================================================
+// 3. SPIEL INITIALISIEREN
+// ==================================================
+
+function startGame() {
+
+    // ==============================================
+    // SZENE
+    // ==============================================
+
+    const scene = new THREE.Scene();
+
+    scene.background = new THREE.Color(0x171b1e);
+
+    scene.fog = new THREE.Fog(
+        0x171b1e,
+        35,
+        95
+    );
+
+
+    // ==============================================
+    // KAMERA
+    // ==============================================
+
+    const camera = new THREE.PerspectiveCamera(
+        76,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        200
+    );
+
+    camera.rotation.order = "YXZ";
+
+
+    // ==============================================
+    // RENDERER
+    // ==============================================
+
+    const renderer = new THREE.WebGLRenderer({
+
+        antialias: true,
+
+        powerPreference: "high-performance"
+    });
+
+    renderer.setPixelRatio(
+        Math.min(window.devicePixelRatio, 1.75)
+    );
+
+    renderer.setSize(
+        window.innerWidth,
+        window.innerHeight
+    );
+
+    renderer.shadowMap.enabled = true;
+
+    renderer.shadowMap.type =
+        THREE.PCFSoftShadowMap;
+
+    renderer.outputColorSpace =
+        THREE.SRGBColorSpace;
+
+    renderer.toneMapping =
+        THREE.ACESFilmicToneMapping;
+
+    renderer.toneMappingExposure = 1.1;
+
+    document.getElementById("game").appendChild(
+        renderer.domElement
+    );
+
+
+    // ==============================================
+    // LICHT
+    // ==============================================
+
+    const ambientLight = new THREE.HemisphereLight(
+        0xc6d4e1,
+        0x39312a,
+        1.15
+    );
+
+    scene.add(ambientLight);
+
+    const mainLight = new THREE.DirectionalLight(
+        0xffe1ae,
+        1.6
+    );
+
+    mainLight.position.set(-12, 21, 8);
+
+    mainLight.castShadow = true;
+
+    mainLight.shadow.mapSize.set(2048, 2048);
+
+    mainLight.shadow.camera.left = -25;
+    mainLight.shadow.camera.right = 25;
+    mainLight.shadow.camera.top = 25;
+    mainLight.shadow.camera.bottom = -25;
+
+    scene.add(mainLight);
+
+
+    // ==============================================
+    // PHYSIK
+    // ==============================================
+
+    const physics = createPhysics(
+        THREE,
+        scene,
+        {
+            gravity: -9.82
+        }
+    );
+
+
+    // ==============================================
+    // BUNKER
+    // ==============================================
+
+    const bunker = createBunker(
+        THREE,
+        {
+            width: 32,
+            depth: 32,
+            height: 22,
+
+            wallThickness: 1.2,
+
+            floorThickness: 1.2,
+
+            createCeiling: false
+        }
+    );
+
+    scene.add(bunker.group);
+
+    // Statische Kollisionen des Bunkers.
+    bunker.registerPhysics(physics);
+
+
+    // ==============================================
+    // TREPPEN
+    // ==============================================
+
+    const stairs = createBunkerStairs(
+        THREE,
+        {
+            width: 1.5,
+
+            stepCount: 24,
+
+            stepDepth: 0.38,
+
+            stepHeight: 0.12,
+
+            floorHeight: 2.88,
+
+            levels: 4,
+
+            startX: 5,
+
+            startY: 11.8,
+
+            startZ: -12
+        }
+    );
+
+    scene.add(stairs.group);
+
+
+    // ==============================================
+    // BELEUCHTUNG IM BUNKER
+    // ==============================================
+
+    const bunkerLights = [];
+
+    const selectedLightPositions =
+        bunker.lightPositions.filter(
+            (_, index) => index % 2 === 0
+        );
+
+    selectedLightPositions.forEach(position => {
+
+        const lamp = createBunkerLight(
+            THREE,
+            {
+                length: 1.8,
+
+                intensity: 3.2,
+
+                color: 0xffe8c5,
+
+                distance: 24,
+
+                flicker: false,
+
+                shadows: false
+            }
+        );
+
+        lamp.group.position.copy(position);
+
+        scene.add(lamp.group);
+
+        bunkerLights.push(lamp);
+    });
+
+
+    // ==============================================
+    // SPIELER-PHYSIK
+    // ==============================================
+
+    const playerBody = new CANNON.Body({
+
+        mass: 70,
+
+        material: physics.materials.default,
+
+        linearDamping: 0.12,
+
+        angularDamping: 1,
+
+        fixedRotation: true,
+
+        allowSleep: false
+    });
+
+    playerBody.addShape(
+        new CANNON.Sphere(0.45)
+    );
+
+    playerBody.position.set(
+        0,
+        0.55,
+        8
+    );
+
+    playerBody.updateMassProperties();
+
+    physics.world.addBody(playerBody);
+
+
+    // ==============================================
+    // SPIELERSTEUERUNG
+    // ==============================================
+
+    const keys = {};
+
+    let yaw = 0;
+    let pitch = 0;
+
+    let pointerLocked = false;
+
+    const playerSettings = {
+
+        speed: 6.5,
+
+        sprintSpeed: 10,
+
+        jumpForce: 5.5,
+
+        mouseSensitivity: 0.002
+    };
+
+    document.addEventListener("keydown", event => {
+
+        keys[event.code] = true;
+
+        if (
+            event.code === "Space" &&
+            playerBody.position.y <= 0.65
+        ) {
+            playerBody.velocity.y =
+                playerSettings.jumpForce;
+        }
+    });
+
+    document.addEventListener("keyup", event => {
+        keys[event.code] = false;
+    });
+
+    document.addEventListener(
+        "mousemove",
+        event => {
+
+            if (!pointerLocked) return;
+
+            yaw -= event.movementX *
+                playerSettings.mouseSensitivity;
+
+            pitch -= event.movementY *
+                playerSettings.mouseSensitivity;
+
+            pitch = THREE.MathUtils.clamp(
+                pitch,
+                -Math.PI / 2 + 0.05,
+                Math.PI / 2 - 0.05
+            );
+        }
+    );
+
+    document.addEventListener(
+        "pointerlockchange",
+        () => {
+            pointerLocked =
+                document.pointerLockElement === renderer.domElement;
+        }
+    );
+
+
+    // ==============================================
+    // INVENTAR
+    // ==============================================
+
+    const inventory = {
+        coins: 0
+    };
+
+    let depositedTotal = 0;
+
+    const coinObjects = [];
+
+    function updateInventoryUI() {
+
+        const stats = upgrades.getStats();
+
+        document.getElementById("hudCoins").textContent =
+            inventory.coins.toLocaleString("de-DE") +
+            " / " +
+            stats.bagCapacity.toLocaleString("de-DE");
+
+        document.getElementById("hudDeposited").textContent =
+            depositedTotal.toLocaleString("de-DE");
+
+        document.getElementById("hudCollected").textContent =
+            upgrades.getTotalCollected().toLocaleString("de-DE");
+
+        const floor = upgrades.getFloorInfo();
+
+        document.getElementById("hudFloor").textContent =
+            floor.floor + " / 10";
+    }
+
+
+    // ==============================================
+    // MELDUNGEN
+    // ==============================================
+
+    let toastTimer = 0;
+
+    function showToast(message) {
+
+        const toast = document.getElementById("toast");
+
+        toast.textContent = message;
+
+        toast.classList.add("visible");
+
+        clearTimeout(toastTimer);
+
+        toastTimer = setTimeout(() => {
+
+            toast.classList.remove("visible");
+
+        }, 2200);
+    }
+
+
+    // ==============================================
+    // UPGRADES
+    // ==============================================
+
+    let upgrades;
+
+    upgrades = createUpgradeSystem({
+
+        startSkillPoints: 0,
+
+        onSkillPoint(points) {
+
+            showToast(
+                "+1 SKILLPUNKT – Gesamt: " + points
+            );
+        },
+
+        onTaskComplete(level) {
+
+            showToast(
+                "AUFGABE " + level + " GESCHAFFT!"
+            );
+        },
+
+        onFloorProgress(data) {
+
+            if (data.coins === 0) {
+                showToast(
+                    "ETAGE " + data.floor + " ERREICHT!"
+                );
+            }
+        },
+
+        onUpgrade(id, stats) {
+
+            if (id === "vacuum_1") {
+
+                upgrades.setVacuumActive(true);
+
+                showToast("STAUBSAUGER AKTIVIERT!");
+            }
+
+            updateInventoryUI();
+        },
+
+        onMenuToggle(open) {
+
+            if (
+                open &&
+                document.pointerLockElement
+            ) {
+                document.exitPointerLock();
+            }
+        }
+    });
+
+
+    // ==============================================
+    // MASCHINE
+    // ==============================================
+
+    const machine = createCoinMachine(
+        THREE,
+        {
+            width: 2.2,
+            height: 2.3,
+            depth: 1.7,
+
+            interactionDistance: 3.5,
+
+            inventory,
+
+            getCoins() {
+                return inventory.coins;
+            },
+
+            removeCoins(amount) {
+
+                inventory.coins = Math.max(
+                    0,
+                    inventory.coins - amount
+                );
+
+                updateInventoryUI();
+            },
+
+            getPlayerPosition() {
+
+                return new THREE.Vector3(
+                    playerBody.position.x,
+                    playerBody.position.y,
+                    playerBody.position.z
+                );
+            },
+
+            onDeposit(amount, total) {
+
+                depositedTotal += amount;
+
+                showToast(
+                    amount.toLocaleString("de-DE") +
+                    " COINS EINGEZAHLT"
+                );
+
+                updateInventoryUI();
+            }
+        }
+    );
+
+    machine.group.position.copy(
+        bunker.machinePosition
+    );
+
+    scene.add(machine.group);
+
+
+    // Maschinen-Kollisionskörper.
+    const machineCollider = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 2.3, 1.7),
+        new THREE.MeshBasicMaterial({
+            visible: false
+        })
+    );
+
+    machineCollider.position.set(
+        bunker.machinePosition.x,
+        1.15,
+        bunker.machinePosition.z
+    );
+
+    scene.add(machineCollider);
+
+    physics.addBox(machineCollider, {
+        mass: 0
+    });
+
+
+    // ==============================================
+    // FÖRDERBAND
+    // ==============================================
+
+    const conveyor = createConveyorBelt(
+        THREE,
+        {
+            length: 5,
+            width: 1.5,
+            height: 0.65,
+            speed: 1.5
+        }
+    );
+
+    conveyor.group.position.set(
+        bunker.machinePosition.x + 3.5,
+        0,
+        0
+    );
+
+    scene.add(conveyor.group);
+
+
+    // ==============================================
+    // ROHR UND TRICHTER AN DER MASCHINE
+    // ==============================================
+
+    const machinePipe = createPipe(
+        THREE,
+        {
+            radius: 0.25,
+            length: 0.7,
+            wallThickness: 0.045
+        }
+    );
+
+    machinePipe.group.position.set(
+        bunker.machinePosition.x,
+        2.8,
+        0
+    );
+
+    scene.add(machinePipe.group);
+
+
+    const machineFunnel = createFunnel(
+        THREE,
+        {
+            topWidth: 1.8,
+            topDepth: 1.5,
+            bottomRadius: 0.24,
+            height: 1.15
+        }
+    );
+
+    machineFunnel.position.set(
+        bunker.machinePosition.x,
+        3.6,
+        0
+    );
+
+    scene.add(machineFunnel);
+
+
+    // ==============================================
+    // MILLION-COIN-VERPACKUNG
+    // ==============================================
+
+    const packaging = createCoinPackaging(
+        THREE,
+        {
+            radius: 0.85,
+            height: 2.3,
+            coinScale: 0.72
+        }
+    );
+
+    packaging.group.position.set(
+        5,
+        0.1,
+        5
+    );
+
+    scene.add(packaging.group);
+
+    const packagingPhysics = physics.addPackaging(
+        packaging
+    );
+
+    // Die sichtbare Münze liegt mit ihrer flachen
+    // Seite in Z-Richtung. Cannon-Zylinder benötigt
+    // deshalb die passende lokale Ausrichtung.
+    if (
+        packagingPhysics &&
+        packagingPhysics.coin &&
+        packagingPhysics.coin.shapeOrientations[0]
+    ) {
+
+        packagingPhysics.coin.shapeOrientations[0].setFromEuler(
+            Math.PI / 2,
+            0,
+            0
+        );
+
+        packagingPhysics.coin.updateMassProperties();
+    }
+
+    renderer.domElement.addEventListener(
+        "pointerdown",
+        event => {
+            packaging.handlePointerDown(
+                event,
+                camera,
+                renderer
+            );
+        }
+    );
+
+
+    // ==============================================
+    // STAUBSAUGER – 10 FUNNEL-POSITIONEN
+    // ==============================================
+
+    const floorFunnels = [];
+
+    for (let i = 0; i < 10; i++) {
+
+        const funnel = createFunnel(
+            THREE,
+            {
+                topWidth: 1.8,
+                topDepth: 1.5,
+                bottomRadius: 0.24,
+                height: 1.15
+            }
+        );
+
+        const pipe = createPipe(
+            THREE,
+            {
+                radius: 0.25,
+                length: 1.1
+            }
+        );
+
+        const levelGroup = new THREE.Group();
+
+        levelGroup.add(funnel);
+        levelGroup.add(pipe.group);
+
+        const y = 1.2 + i * 2.05;
+
+        funnel.position.set(0, 0.6, 0);
+
+        pipe.group.position.set(
+            0,
+            -0.7,
+            0
+        );
+
+        levelGroup.position.set(
+            13.4,
+            y,
+            -8
+        );
+
+        levelGroup.visible = i === 0;
+
+        scene.add(levelGroup);
+
+        floorFunnels.push(levelGroup);
+    }
+
+
+    // ==============================================
+    // PHYSIKALISCHE COINS ERZEUGEN
+    // ==============================================
+
+    function createPhysicalCoin(x, y, z) {
+
+        const coinData = createCoin(
+            THREE,
+            {
+                radius: 0.5,
+                thickness: 0.075
+            }
+        );
+
+        const coin = coinData.group || coinData;
+
+        coin.scale.setScalar(0.35);
+
+        coin.position.set(x, y, z);
+
+        coin.userData.isCoin = true;
+
+        coin.name = "PhysicalCoin";
+
+        coin.traverse(child => {
+
+            if (child.isMesh) {
+                child.castShadow = false;
+                child.receiveShadow = true;
+            }
+        });
+
+        scene.add(coin);
+
+        const body = physics.addCoin(
+            coin,
+            {
+                radius: 0.175,
+                thickness: 0.02625,
+                mass: 0.08,
+                segments: 48
+            }
+        );
+
+        // Ausrichtung passend zur sichtbaren Münze.
+        if (body.shapeOrientations[0]) {
+
+            body.shapeOrientations[0].setFromEuler(
+                Math.PI / 2,
+                0,
+                0
+            );
+
+            body.updateMassProperties();
+        }
+
+        coinObjects.push(coin);
+
+        pickupSystem.register(coin, {
+            radius: 0.3,
+            canPickup: true
+        });
+
+        antiLagg.registerObject(coin, {
+            maxDistance: 55
+        });
+
+        return coin;
+    }
+
+
+    // ==============================================
+    // KISTE ZUM AUFHEBEN UND WERFEN
+    // ==============================================
+
+    const crate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.9, 0.9, 0.9),
+        new THREE.MeshStandardMaterial({
+            color: 0x775438,
+            roughness: 0.85
+        })
+    );
+
+    crate.position.set(
+        2,
+        0.55,
+        5
+    );
+
+    crate.castShadow = true;
+    crate.receiveShadow = true;
+
+    scene.add(crate);
+
+    physics.addBox(crate, {
+        mass: 4,
+        linearDamping: 0.03,
+        angularDamping: 0.08
+    });
+
+    pickupSystem.register(crate, {
+        canPickup: true,
+        throwMultiplier: 1
+    });
+
+
+    // ==============================================
+    // AUFHEBEN-SYSTEM
+    // ==============================================
+
+    const pickupSystem = createPickupSystem(
+        THREE,
+        camera,
+        renderer,
+        physics,
+        {
+            maxDistance: 4,
+            holdDistance: 2.2,
+            holdHeight: -0.35,
+            throwStrength: 9,
+            smoothness: 12
+        }
+    );
+
+
+    // ==============================================
+    // COINS ERZEUGEN
+    // ==============================================
+
+    for (let i = 0; i < 100; i++) {
+
+        const x = (Math.random() - 0.5) * 10;
+        const z = (Math.random() - 0.5) * 9;
+
+        const y = 0.45 + Math.random() * 2.5;
+
+        createPhysicalCoin(x, y, z);
+    }
+
+
+    // ==============================================
+    // COINS ENTFERNEN
+    // ==============================================
+
+    function removePhysicalCoin(coin) {
+
+        if (!coin) return false;
+
+        const index = coinObjects.indexOf(coin);
+
+        if (index === -1) return false;
+
+        pickupSystem.unregister(coin);
+
+        antiLagg.unregisterObject(coin);
+
+        physics.removeObject(coin);
+
+        if (coin.parent) {
+            coin.parent.remove(coin);
+        }
+
+        coin.traverse(child => {
+
+            if (child.geometry) {
+                child.geometry.dispose();
+            }
+
+            if (child.material) {
+
+                const materials = Array.isArray(child.material)
+                    ? child.material
+                    : [child.material];
+
+                materials.forEach(material => {
+                    material.dispose();
+                });
+            }
+        });
+
+        coinObjects.splice(index, 1);
+
+        return true;
+    }
+
+
+    // ==============================================
+    // COINS EINSAMMELN
+    // ==============================================
+
+    let pointerHeld = false;
+    let pickupCooldown = 0;
+
+    function collectCoinsAround(target) {
+
+        if (!target) return 0;
+
+        const stats = upgrades.getStats();
+
+        const freeSpace = Math.max(
+            0,
+            stats.bagCapacity - inventory.coins
+        );
+
+        if (freeSpace <= 0) {
+
+            showToast("TASCHE VOLL – ZUR MASCHINE!");
+
+            return 0;
+        }
+
+        const targetPosition = target.getWorldPosition(
+            new THREE.Vector3()
+        );
+
+        const radius = Math.max(
+            0.8,
+            stats.pickupRadius * 1.2
+        );
+
+        const candidates = coinObjects
+            .map(coin => ({
+                coin,
+                distance: coin.getWorldPosition(
+                    new THREE.Vector3()
+                ).distanceTo(targetPosition)
+            }))
+            .filter(item => item.distance <= radius)
+            .sort((a, b) => a.distance - b.distance);
+
+        const amount = Math.min(
+            stats.pickupAmount,
+            freeSpace,
+            candidates.length
+        );
+
+        let collected = 0;
+
+        for (let i = 0; i < amount; i++) {
+
+            if (
+                removePhysicalCoin(
+                    candidates[i].coin
+                )
+            ) {
+                collected++;
+            }
+        }
+
+        if (collected > 0) {
+
+            inventory.coins += collected;
+
+            upgrades.addCoins(collected);
+
+            upgrades.addFloorCoins(collected);
+
+            updateInventoryUI();
+        }
+
+        return collected;
+    }
+
+
+    // ==============================================
+    // COIN-KLICK VOR DEM NORMALEN AUFHEBEN ABFANGEN
+    // ==============================================
+
+    function handleCoinPointerDown(event) {
+
+        if (event.button !== 0) return;
+
+        if (!pointerLocked) return;
+
+        pointerHeld = true;
+
+        const found = pickupSystem.findPickupObject();
+
+        if (
+            found &&
+            found.object.userData.isCoin
+        ) {
+
+            event.preventDefault();
+            event.stopImmediatePropagation();
+
+            collectCoinsAround(found.object);
+        }
+    }
+
+    function handlePointerUp() {
+        pointerHeld = false;
+    }
+
+    // Capture-Phase: Coins zuerst erkennen.
+    renderer.domElement.addEventListener(
+        "pointerdown",
+        handleCoinPointerDown,
+        true
+    );
+
+    window.addEventListener(
+        "pointerup",
+        handlePointerUp
+    );
+
+
+    // ==============================================
+    // ANTI-LAG SYSTEM
+    // ==============================================
+
+    const antiLagg = createAntiLagg(
+        THREE,
+        scene,
+        camera,
+        renderer,
+        {
+            chunkSize: 32,
+
+            renderDistance: 100,
+
+            targetFPS: 60,
+
+            minimumFPS: 30,
+
+            autoQuality: true,
+
+            maxActiveChunks: 100,
+
+            culling: true,
+
+            chunkSystem: true,
+
+            distanceCulling: true,
+
+            frustumCulling: true
+        }
+    );
+
+    antiLagg.registerObject(machine.group, {
+        maxDistance: 90
+    });
+
+    antiLagg.registerObject(conveyor.group, {
+        maxDistance: 90
+    });
+
+    antiLagg.registerObject(packaging.group, {
+        maxDistance: 90
+    });
+
+
+    // ==============================================
+    // SPIEL STARTEN
+    // ==============================================
+
+    document.getElementById("loading").style.display = "none";
+
+    document.getElementById("startScreen").style.display = "flex";
+
+    document.getElementById("startButton").onclick = () => {
+
+        document.getElementById("startScreen").style.display = "none";
+
+        renderer.domElement.requestPointerLock();
+    };
+
+    renderer.domElement.addEventListener(
+        "click",
+        () => {
+
+            if (
+                !pointerLocked &&
+                !upgrades.isMenuOpen()
+            ) {
+                renderer.domElement.requestPointerLock();
+            }
+        }
+    );
+
+
+    // ==============================================
+    // SPIELZEIT UND STATISTIKEN
+    // ==============================================
+
+    const clock = new THREE.Clock();
+
+    let fpsTimer = 0;
+    let fpsFrames = 0;
+    let currentFPS = 60;
+
+    let statsTimer = 0;
+
+
+    // ==============================================
+    // HAUPTSCHLEIFE
+    // ==============================================
+
+    function animate() {
+
+        requestAnimationFrame(animate);
+
+        const deltaTime = Math.min(
+            clock.getDelta(),
+            0.05
+        );
+
+
+        // ------------------------------------------
+        // SPIELER BEWEGEN
+        // ------------------------------------------
+
+        if (
+            pointerLocked &&
+            !upgrades.isMenuOpen()
+        ) {
+
+            camera.rotation.set(
+                pitch,
+                yaw,
+                0
+            );
+
+            const forward = new THREE.Vector3(
+                -Math.sin(yaw),
+                0,
+                -Math.cos(yaw)
+            );
+
+            const right = new THREE.Vector3(
+                Math.cos(yaw),
+                0,
+                -Math.sin(yaw)
+            );
+
+            const movement = new THREE.Vector3();
+
+            if (keys["KeyW"]) movement.add(forward);
+            if (keys["KeyS"]) movement.sub(forward);
+
+            if (keys["KeyD"]) movement.add(right);
+            if (keys["KeyA"]) movement.sub(right);
+
+            if (movement.lengthSq() > 0) {
+
+                movement.normalize();
+
+                const speed = keys["ShiftLeft"]
+                    ? playerSettings.sprintSpeed
+                    : playerSettings.speed;
+
+                playerBody.velocity.x =
+                    movement.x * speed;
+
+                playerBody.velocity.z =
+                    movement.z * speed;
+
+            } else {
+
+                playerBody.velocity.x *= 0.85;
+                playerBody.velocity.z *= 0.85;
+            }
+        }
+
+
+        // ------------------------------------------
+        // PHYSIK
+        // ------------------------------------------
+
+        physics.update(deltaTime);
+
+
+        // ------------------------------------------
+        // KAMERA AN SPIELER
+        // ------------------------------------------
+
+        camera.position.set(
+            playerBody.position.x,
+            playerBody.position.y + 0.55,
+            playerBody.position.z
+        );
+
+
+        // ------------------------------------------
+        // AUFHEBEN UND TRAGEN
+        // ------------------------------------------
+
+        pickupSystem.update(deltaTime);
+
+
+        // ------------------------------------------
+        // UPGRADES: DAUER-SAMMELN
+        // ------------------------------------------
+
+        const upgradeStats = upgrades.getStats();
+
+        if (
+            pointerHeld &&
+            pointerLocked &&
+            upgradeStats.holdToCollect
+        ) {
+
+            pickupCooldown -= deltaTime;
+
+            const interval = 1 / (
+                4 * upgradeStats.pickupSpeed
+            );
+
+            if (pickupCooldown <= 0) {
+
+                pickupCooldown = interval;
+
+                const found =
+                    pickupSystem.findPickupObject();
+
+                if (
+                    found &&
+                    found.object.userData.isCoin
+                ) {
+                    collectCoinsAround(found.object);
+                }
+            }
+        }
+
+
+        // ------------------------------------------
+        // MASCHINE
+        // ------------------------------------------
+
+        machine.update(deltaTime);
+
+
+        // ------------------------------------------
+        // FÖRDERBAND
+        // ------------------------------------------
+
+        conveyor.update(deltaTime);
+
+
+        // ------------------------------------------
+        // BELEUCHTUNG
+        // ------------------------------------------
+
+        bunkerLights.forEach(lamp => {
+            lamp.update(deltaTime);
+        });
+
+
+        // ------------------------------------------
+        // MILLION-COIN-ANIMATION
+        // ------------------------------------------
+
+        if (packaging.coin) {
+            // Die Million-Coin-Animation wird vom
+            // verpackten Coin-System separat verwaltet.
+        }
+
+
+        // ------------------------------------------
+        // STAUBSAUGER
+        // ------------------------------------------
+
+        const floorInfo = upgrades.getFloorInfo();
+
+        const activeFloorIndex = Math.min(
+            floorInfo.floor - 1,
+            floorFunnels.length - 1
+        );
+
+        floorFunnels.forEach((funnel, index) => {
+
+            funnel.visible =
+                upgradeStats.vacuumEnabled &&
+                index === activeFloorIndex;
+        });
+
+
+        if (upgradeStats.vacuumEnabled) {
+
+            const activeFunnel =
+                floorFunnels[activeFloorIndex];
+
+            const funnelPosition =
+                activeFunnel.getWorldPosition(
+                    new THREE.Vector3()
+                );
+
+            const vacuumRadius =
+                4 * upgradeStats.vacuumRadius;
+
+            const nearbyCoins = [];
+
+            for (const coin of [...coinObjects]) {
+
+                const coinPosition =
+                    coin.getWorldPosition(
+                        new THREE.Vector3()
+                    );
+
+                const difference = new THREE.Vector3()
+                    .subVectors(
+                        funnelPosition,
+                        coinPosition
+                    );
+
+                const distance = difference.length();
+
+                if (distance > vacuumRadius) continue;
+
+                nearbyCoins.push(coin);
+
+                if (distance > 0.1) {
+
+                    difference.normalize();
+
+                    const force = difference.multiplyScalar(
+                        4 * upgradeStats.vacuumStrength
+                    );
+
+                    physics.applyForce(
+                        coin,
+                        force
+                    );
+                }
+            }
+
+            // Die Upgrade-Datei verwendet intern
+            // 5 / vacuumSpeed als Zeitintervall.
+            // Durch dt / 5 beginnt der Sauger mit
+            // einer Coin alle fünf Sekunden.
+            upgrades.updateVacuum(
+                deltaTime / 5,
+                nearbyCoins,
+                coin => {
+                    removePhysicalCoin(coin);
+                }
+            );
+        }
+
+
+        // ------------------------------------------
+        // ANTI-LAG
+        // ------------------------------------------
+
+        antiLagg.update(deltaTime);
+
+
+        // ------------------------------------------
+        // INVENTAR-ANZEIGE
+        // ------------------------------------------
+
+        updateInventoryUI();
+
+
+        // ------------------------------------------
+        // PERFORMANCE-ANZEIGE
+        // ------------------------------------------
+
+        fpsFrames++;
+
+        fpsTimer += deltaTime;
+
+        if (fpsTimer >= 1) {
+
+            currentFPS = Math.round(
+                fpsFrames / fpsTimer
+            );
+
+            fpsFrames = 0;
+            fpsTimer = 0;
+        }
+
+        statsTimer += deltaTime;
+
+        if (statsTimer >= 0.5) {
+
+            statsTimer = 0;
+
+            const physicsStats = physics.getStats();
+
+            const performanceStats = antiLagg.getStats();
+
+            document.getElementById("performance").textContent =
+                "FPS: " + currentFPS +
+                " | Physik: " + physicsStats.totalBodies +
+                " | Münzen: " + physicsStats.coins +
+                " | Qualität: " +
+                Math.round(performanceStats.quality * 100) + "%";
+        }
+
+
+        // ------------------------------------------
+        // RENDERING
+        // ------------------------------------------
+
+        renderer.render(scene, camera);
+    }
+
+
+    // ==============================================
+    // FENSTERGRÖSSE
+    // ==============================================
+
+    window.addEventListener(
+        "resize",
+        () => {
+
+            camera.aspect =
+                window.innerWidth / window.innerHeight;
+
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(
+                window.innerWidth,
+                window.innerHeight
+            );
+
+            renderer.setPixelRatio(
+                Math.min(window.devicePixelRatio, 1.75)
+            );
+        }
+    );
+
+
+    // ==============================================
+    // START
+    // ==============================================
+
+    updateInventoryUI();
+
+    animate();
+
+
+    // ==============================================
+    // DEBUG-ZUGRIFF
+    // ==============================================
+
+    window.game = {
+
+        THREE,
+        scene,
+        camera,
+        renderer,
+
+        physics,
+        bunker,
+        stairs,
+
+        machine,
+        conveyor,
+
+        packaging,
+
+        upgrades,
+        pickupSystem,
+
+        antiLagg,
+
+        inventory,
+
+        coinObjects,
+
+        playerBody,
+
+        get depositedCoins() {
+            return depositedTotal;
+        },
+
+        get collectedCoins() {
+            return upgrades.getTotalCollected();
+        }
+    };
+
+    console.log(
+        "ONE MILLION COINS gestartet!",
+        window.game
+    );
+}
+
+
+// ==================================================
+// 4. FEHLERBEHANDLUNG
+// ==================================================
+
+try {
+
+    startGame();
+
+} catch (error) {
+
+    console.error(error);
+
+    document.getElementById("loading").style.display = "none";
+
+    const errorBox = document.getElementById("fatalError");
+
+    errorBox.style.display = "block";
+
+    errorBox.textContent =
+        "SPIELSTART FEHLGESCHLAGEN\n\n" +
+        error.message +
+        "\n\n" +
+        (error.stack || "");
+}
+
+</script>
+
+</body>
+</html>
