@@ -26,29 +26,17 @@ Funktionen:
 function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
 
     const SETTINGS = {
-
         chunkSize: options.chunkSize ?? 32,
-
         renderDistance: options.renderDistance ?? 100,
-
         updateInterval: options.updateInterval ?? 0.25,
-
         targetFPS: options.targetFPS ?? 60,
-
         minimumFPS: options.minimumFPS ?? 30,
-
         autoQuality: options.autoQuality ?? true,
-
         maxActiveChunks: options.maxActiveChunks ?? 100,
-
         lodDistance: options.lodDistance ?? 35,
-
         culling: options.culling ?? true,
-
         chunkSystem: options.chunkSystem ?? true,
-
         distanceCulling: options.distanceCulling ?? true,
-
         frustumCulling: options.frustumCulling ?? true
     };
 
@@ -57,74 +45,51 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     const chunks = new Map();
-
     const registeredObjects = new Map();
-
     const geometryCache = new Map();
-
     const materialCache = new Map();
-
     const objectPools = new Map();
-
     const instancedGroups = new Map();
 
     const stats = {
-
         fps: 60,
-
         averageFPS: 60,
-
         frameTime: 0,
-
         visibleObjects: 0,
-
         hiddenObjects: 0,
-
         activeChunks: 0,
-
         totalChunks: 0,
-
         drawCalls: 0,
-
         quality: 1
     };
 
     let elapsed = 0;
     let updateTimer = 0;
-
-    let lastFrameTime = performance.now();
-
     let frameCounter = 0;
-
     let fpsTimer = 0;
-
     let qualityLevel = 1;
-
     let disposed = false;
 
     const frustum = new THREE.Frustum();
-
     const projectionMatrix = new THREE.Matrix4();
+
+    const tempVector = new THREE.Vector3();
+    const tempBox = new THREE.Box3();
 
     // =========================================
     // CHUNK KOORDINATEN
     // =========================================
 
     function getChunkKey(x, z) {
-
         const cx = Math.floor(x / SETTINGS.chunkSize);
-
         const cz = Math.floor(z / SETTINGS.chunkSize);
 
         return `${cx}_${cz}`;
     }
 
     function getChunkCoordinates(x, z) {
-
         return {
-
             x: Math.floor(x / SETTINGS.chunkSize),
-
             z: Math.floor(z / SETTINGS.chunkSize)
         };
     }
@@ -134,6 +99,7 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function createChunk(x, z) {
+        if (disposed) return null;
 
         const key = `${x}_${z}`;
 
@@ -144,29 +110,19 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         const group = new THREE.Group();
 
         group.name = `Chunk_${key}`;
-
         group.userData.isChunk = true;
-
         group.userData.chunkX = x;
-
         group.userData.chunkZ = z;
 
         scene.add(group);
 
         const chunk = {
-
             key,
-
             x,
-
             z,
-
             group,
-
             objects: [],
-
             active: true,
-
             lastUsed: performance.now()
         };
 
@@ -182,6 +138,7 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function addToChunk(object, x, z) {
+        if (!object || disposed) return null;
 
         const coordinates = getChunkCoordinates(x, z);
 
@@ -189,6 +146,8 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
             coordinates.x,
             coordinates.z
         );
+
+        if (!chunk) return null;
 
         if (object.parent) {
             object.parent.remove(object);
@@ -208,24 +167,29 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function removeChunk(key) {
-
         const chunk = chunks.get(key);
 
         if (!chunk) return;
 
+        // Objekte nicht zerstören, sondern zurück
+        // in die Hauptszene verschieben.
+        for (const object of [...chunk.objects]) {
+            if (!object) continue;
+
+            scene.attach(object);
+
+            delete object.userData.chunkKey;
+        }
+
         scene.remove(chunk.group);
-
-        chunk.group.traverse(object => {
-
-            if (object.isMesh) {
-
-                object.visible = false;
-            }
-        });
 
         chunks.delete(key);
 
         stats.totalChunks = chunks.size;
+        stats.activeChunks = Math.max(
+            0,
+            stats.activeChunks - (chunk.active ? 1 : 0)
+        );
     }
 
     // =========================================
@@ -233,9 +197,8 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function updateChunks() {
-
         const cameraPosition = camera.getWorldPosition(
-            new THREE.Vector3()
+            tempVector
         );
 
         const current = getChunkCoordinates(
@@ -246,9 +209,7 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         let activeCount = 0;
 
         for (const chunk of chunks.values()) {
-
             const dx = chunk.x - current.x;
-
             const dz = chunk.z - current.z;
 
             const distance = Math.sqrt(
@@ -259,22 +220,18 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
                 distance <= SETTINGS.renderDistance;
 
             chunk.active = active;
-
             chunk.group.visible = active;
 
             if (active) {
-
                 activeCount++;
-
                 chunk.lastUsed = performance.now();
             }
         }
 
         stats.activeChunks = activeCount;
 
-        // Alte, weit entfernte leere Chunks entfernen.
+        // Alte, weit entfernte Chunks entfernen.
         if (chunks.size > SETTINGS.maxActiveChunks) {
-
             const inactive = [...chunks.values()]
                 .filter(chunk => !chunk.active)
                 .sort((a, b) => a.lastUsed - b.lastUsed);
@@ -283,7 +240,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
                 chunks.size > SETTINGS.maxActiveChunks &&
                 inactive.length > 0
             ) {
-
                 removeChunk(inactive.shift().key);
             }
         }
@@ -294,16 +250,38 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function registerObject(object, options = {}) {
+        if (!object || disposed) return null;
 
-        if (!object) return;
+        const existing = registeredObjects.get(object.uuid);
+
+        if (existing) {
+            Object.assign(existing, {
+                maxDistance:
+                    options.maxDistance ??
+                    existing.maxDistance,
+
+                lods:
+                    options.lods ??
+                    existing.lods,
+
+                alwaysVisible:
+                    options.alwaysVisible ??
+                    existing.alwaysVisible,
+
+                customUpdate:
+                    options.update ??
+                    existing.customUpdate
+            });
+
+            return existing;
+        }
 
         const entry = {
-
             object,
 
-            position: object.position.clone(),
-
-            maxDistance: options.maxDistance ?? SETTINGS.renderDistance,
+            maxDistance:
+                options.maxDistance ??
+                SETTINGS.renderDistance,
 
             lods: options.lods ?? null,
 
@@ -313,13 +291,14 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
 
             customUpdate: options.update ?? null,
 
-            alwaysVisible: options.alwaysVisible ?? false
+            alwaysVisible: options.alwaysVisible ?? false,
+
+            lastVisible: object.visible
         };
 
         registeredObjects.set(object.uuid, entry);
 
         if (entry.chunked) {
-
             const worldPosition = object.getWorldPosition(
                 new THREE.Vector3()
             );
@@ -334,9 +313,19 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         return entry;
     }
 
-    function unregisterObject(object) {
+    // =========================================
+    // OBJEKT ABMELDEN
+    // =========================================
 
+    function unregisterObject(object) {
         if (!object) return;
+
+        const entry = registeredObjects.get(object.uuid);
+
+        if (!entry) return;
+
+        // Ursprüngliche Sichtbarkeit wiederherstellen.
+        entry.object.visible = entry.originalVisible;
 
         registeredObjects.delete(object.uuid);
     }
@@ -346,7 +335,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function updateFrustum() {
-
         camera.updateMatrixWorld();
 
         projectionMatrix.multiplyMatrices(
@@ -359,52 +347,83 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         );
 
         stats.visibleObjects = 0;
-
         stats.hiddenObjects = 0;
 
         for (const entry of registeredObjects.values()) {
-
             const object = entry.object;
 
-            if (entry.alwaysVisible) continue;
+            if (!object || !object.parent) continue;
 
-            if (!object.geometry && !object.children.length) {
+            if (entry.alwaysVisible) {
+                object.visible = entry.originalVisible;
+
+                if (object.visible) {
+                    stats.visibleObjects++;
+                }
+
+                continue;
+            }
+
+            // Ursprünglich unsichtbare Objekte bleiben
+            // unsichtbar.
+            if (!entry.originalVisible) {
+                object.visible = false;
+                stats.hiddenObjects++;
                 continue;
             }
 
             object.updateWorldMatrix(true, false);
 
-            const box = new THREE.Box3().setFromObject(object);
+            const hasGeometry =
+                object.geometry ||
+                object.children.length > 0;
 
-            const inView = frustum.intersectsBox(box);
+            if (!hasGeometry) {
+                object.visible = entry.originalVisible;
+                continue;
+            }
+
+            const box = tempBox.setFromObject(object);
+
+            const inView =
+                !SETTINGS.frustumCulling ||
+                frustum.intersectsBox(box);
+
+            const objectPosition = object.getWorldPosition(
+                new THREE.Vector3()
+            );
 
             const distance = camera.position.distanceTo(
-                object.getWorldPosition(new THREE.Vector3())
+                objectPosition
             );
 
             const inDistance =
+                !SETTINGS.distanceCulling ||
                 distance <= entry.maxDistance;
 
-            const visible = inView && inDistance;
+            const visible =
+                entry.originalVisible &&
+                inView &&
+                inDistance;
 
             object.visible = visible;
+            entry.lastVisible = visible;
 
             if (visible) {
-
                 stats.visibleObjects++;
-
             } else {
-
                 stats.hiddenObjects++;
             }
 
             if (entry.customUpdate) {
-
-                entry.customUpdate(object, visible, distance);
+                entry.customUpdate(
+                    object,
+                    visible,
+                    distance
+                );
             }
 
             if (entry.lods) {
-
                 updateLOD(entry, distance);
             }
         }
@@ -415,7 +434,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function updateLOD(entry, distance) {
-
         const lods = entry.lods;
 
         if (!lods || lods.length === 0) return;
@@ -423,26 +441,22 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         let selected = lods[0];
 
         for (const lod of lods) {
-
             if (distance >= lod.distance) {
-
                 selected = lod;
             }
         }
 
         for (const lod of lods) {
-
             lod.object.visible =
+                entry.originalVisible &&
                 lod.object === selected.object;
         }
     }
 
     function createLOD(objects) {
-
         const lod = new THREE.LOD();
 
         for (const item of objects) {
-
             lod.addLevel(
                 item.object,
                 item.distance
@@ -457,9 +471,7 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function getGeometry(key, createFunction) {
-
         if (geometryCache.has(key)) {
-
             return geometryCache.get(key);
         }
 
@@ -475,9 +487,7 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function getMaterial(key, createFunction) {
-
         if (materialCache.has(key)) {
-
             return materialCache.get(key);
         }
 
@@ -493,23 +503,17 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function createPool(key, factory, initialSize = 10) {
-
         if (objectPools.has(key)) {
-
             return objectPools.get(key);
         }
 
         const pool = {
-
             available: [],
-
             active: new Set(),
-
             factory
         };
 
         for (let i = 0; i < initialSize; i++) {
-
             const object = factory();
 
             object.visible = false;
@@ -525,6 +529,7 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     }
 
     function acquire(key) {
+        if (disposed) return null;
 
         const pool = objectPools.get(key);
 
@@ -533,7 +538,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         let object = pool.available.pop();
 
         if (!object) {
-
             object = pool.factory();
 
             scene.add(object);
@@ -547,7 +551,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     }
 
     function release(key, object) {
-
         const pool = objectPools.get(key);
 
         if (!pool || !object) return;
@@ -557,13 +560,10 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         object.visible = false;
 
         object.position.set(0, -10000, 0);
-
         object.rotation.set(0, 0, 0);
-
         object.scale.set(1, 1, 1);
 
         pool.active.delete(object);
-
         pool.available.push(object);
     }
 
@@ -571,10 +571,13 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // INSTANCING
     // =========================================
 
-    function createInstancedGroup(key, geometry, material, count) {
-
+    function createInstancedGroup(
+        key,
+        geometry,
+        material,
+        count
+    ) {
         if (instancedGroups.has(key)) {
-
             return instancedGroups.get(key);
         }
 
@@ -585,7 +588,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         );
 
         mesh.count = 0;
-
         mesh.frustumCulled = true;
 
         mesh.instanceMatrix.setUsage(
@@ -599,7 +601,16 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         return mesh;
     }
 
-    function setInstance(mesh, index, position, rotation, scale) {
+    function setInstance(
+        mesh,
+        index,
+        position,
+        rotation,
+        scale
+    ) {
+        if (!mesh || index < 0 || index >= mesh.instanceMatrix.count) {
+            return;
+        }
 
         const dummy = new THREE.Object3D();
 
@@ -630,7 +641,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function setQuality(level) {
-
         qualityLevel = THREE.MathUtils.clamp(
             level,
             0.25,
@@ -639,17 +649,20 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
 
         stats.quality = qualityLevel;
 
-        // Pixel-Auflösung reduzieren
-        renderer.setPixelRatio(
-            Math.min(
-                window.devicePixelRatio,
-                2
-            ) * qualityLevel
+        const pixelRatio = Math.min(
+            window.devicePixelRatio || 1,
+            2
+        ) * qualityLevel;
+
+        renderer.setPixelRatio(pixelRatio);
+
+        renderer.setSize(
+            window.innerWidth,
+            window.innerHeight,
+            false
         );
 
-        // Schattenqualität
         if (renderer.shadowMap.enabled) {
-
             renderer.shadowMap.autoUpdate =
                 qualityLevel >= 0.75;
         }
@@ -658,19 +671,16 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     }
 
     function updateAdaptiveQuality() {
-
         if (!SETTINGS.autoQuality) return;
 
+        // Kleine Schritte statt hektischer Änderungen.
         if (stats.averageFPS < SETTINGS.minimumFPS) {
-
-            setQuality(qualityLevel - 0.1);
-
+            setQuality(qualityLevel - 0.05);
         } else if (
-            stats.averageFPS > SETTINGS.targetFPS &&
+            stats.averageFPS > SETTINGS.targetFPS + 5 &&
             qualityLevel < 1
         ) {
-
-            setQuality(qualityLevel + 0.05);
+            setQuality(qualityLevel + 0.025);
         }
     }
 
@@ -679,7 +689,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function updateFPS(deltaTime) {
-
         frameCounter++;
 
         fpsTimer += deltaTime;
@@ -687,7 +696,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         stats.frameTime = deltaTime * 1000;
 
         if (fpsTimer >= 1) {
-
             stats.fps = Math.round(
                 frameCounter / fpsTimer
             );
@@ -697,7 +705,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
                 stats.fps * 0.2;
 
             frameCounter = 0;
-
             fpsTimer = 0;
 
             updateAdaptiveQuality();
@@ -709,8 +716,11 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function update(deltaTime) {
-
         if (disposed) return;
+
+        if (!Number.isFinite(deltaTime) || deltaTime < 0) {
+            deltaTime = 0;
+        }
 
         elapsed += deltaTime;
 
@@ -719,7 +729,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
         updateTimer += deltaTime;
 
         if (updateTimer >= SETTINGS.updateInterval) {
-
             updateTimer = 0;
 
             if (SETTINGS.chunkSystem) {
@@ -727,15 +736,14 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
             }
 
             if (SETTINGS.culling) {
-
-                if (SETTINGS.frustumCulling ||
-                    SETTINGS.distanceCulling) {
-
+                if (
+                    SETTINGS.frustumCulling ||
+                    SETTINGS.distanceCulling
+                ) {
                     updateFrustum();
                 }
             }
         }
-
     }
 
     // =========================================
@@ -743,22 +751,27 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function getStats() {
-
         return {
-
             ...stats,
 
             chunks: chunks.size,
 
-            registeredObjects: registeredObjects.size,
+            registeredObjects:
+                registeredObjects.size,
 
-            geometryCache: geometryCache.size,
+            geometryCache:
+                geometryCache.size,
 
-            materialCache: materialCache.size,
+            materialCache:
+                materialCache.size,
 
-            pools: objectPools.size,
+            pools:
+                objectPools.size,
 
-            instancedGroups: instancedGroups.size
+            instancedGroups:
+                instancedGroups.size,
+
+            elapsed
         };
     }
 
@@ -767,21 +780,26 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     function dispose() {
+        if (disposed) return;
 
         disposed = true;
 
-        for (const chunk of chunks.values()) {
+        for (const entry of registeredObjects.values()) {
+            if (entry.object) {
+                entry.object.visible =
+                    entry.originalVisible;
+            }
+        }
 
+        for (const chunk of chunks.values()) {
             scene.remove(chunk.group);
         }
 
         for (const mesh of instancedGroups.values()) {
-
             scene.remove(mesh);
         }
 
         for (const pool of objectPools.values()) {
-
             for (const object of pool.active) {
                 scene.remove(object);
             }
@@ -791,17 +809,21 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
             }
         }
 
+        // Cache-Objekte werden nicht automatisch
+        // disposed, da andere Spielobjekte sie
+        // möglicherweise noch verwenden.
+
         chunks.clear();
-
         registeredObjects.clear();
-
         geometryCache.clear();
-
         materialCache.clear();
-
         objectPools.clear();
-
         instancedGroups.clear();
+
+        stats.totalChunks = 0;
+        stats.activeChunks = 0;
+        stats.visibleObjects = 0;
+        stats.hiddenObjects = 0;
     }
 
     // =========================================
@@ -809,7 +831,6 @@ function createAntiLagg(THREE, scene, camera, renderer, options = {}) {
     // =========================================
 
     return {
-
         update,
 
         registerObject,
