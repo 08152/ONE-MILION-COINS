@@ -1,251 +1,846 @@
 
 function createBunkerStairs(THREE, options = {}) {
-    const group = new THREE.Group();
 
-    const width = options.width ?? 1.5;
-    const stepCount = options.stepCount ?? 24;
-    const stepDepth = options.stepDepth ?? 0.38;
-    const stepHeight = options.stepHeight ?? 0.12;
-    const floorHeight = options.floorHeight ?? 2.88;
+    const group = new THREE.Group();
+    group.name = "Bunker_Treppenanlage";
+
+    // =====================================================
+    // EINSTELLUNGEN
+    // =====================================================
+
+    const settings = {
+
+        width: options.width ?? 1.8,
+
+        stepCount: options.stepCount ?? 24,
+
+        stepDepth: options.stepDepth ?? 0.34,
+
+        stepHeight: options.stepHeight ?? 0.095,
+
+        floorHeight: options.floorHeight ?? 2.266,
+
+        levels: options.levels ?? 9,
+
+        landingLength: options.landingLength ?? 2.2,
+
+        railingHeight: options.railingHeight ?? 1.05,
+
+        railingEnabled: options.railingEnabled ?? true,
+
+        startX: options.startX ?? 10,
+
+        startY: options.startY ?? 0,
+
+        startZ: options.startZ ?? 12,
+
+        direction: options.direction ?? 0,
+
+        wallOffset: options.wallOffset ?? 0,
+
+        stairWidth: options.stairWidth ?? 1.8,
+
+        createCollision: options.createCollision ?? true
+    };
+
+    const width = settings.width;
+    const stepCount = settings.stepCount;
+    const stepDepth = settings.stepDepth;
+    const floorHeight = settings.floorHeight;
+
     const segmentLength = stepCount * stepDepth;
 
+    // =====================================================
+    // MATERIALIEN
+    // =====================================================
+
     const concrete = new THREE.MeshStandardMaterial({
-        color: 0x777B7D,
+        color: 0x777b7d,
         roughness: 0.92,
         metalness: 0.05
     });
 
     const concreteDark = new THREE.MeshStandardMaterial({
-        color: 0x484D50,
+        color: 0x484d50,
         roughness: 0.88,
         metalness: 0.1
     });
 
+    const concreteEdge = new THREE.MeshStandardMaterial({
+        color: 0x62696b,
+        roughness: 0.9
+    });
+
     const metal = new THREE.MeshStandardMaterial({
-        color: 0x656D72,
+        color: 0x656d72,
         metalness: 0.88,
         roughness: 0.28
     });
 
     const handrailMaterial = new THREE.MeshStandardMaterial({
-        color: 0x9B9FA1,
+        color: 0x9b9fa1,
         metalness: 0.95,
         roughness: 0.2
     });
 
-    // Hilfsfunktion für Boxen
-    function addBox(w, h, d, material, x, y, z) {
+    const darkMetal = new THREE.MeshStandardMaterial({
+        color: 0x252b2e,
+        metalness: 0.8,
+        roughness: 0.4
+    });
+
+    const warningMaterial = new THREE.MeshStandardMaterial({
+        color: 0xc4a044,
+        roughness: 0.72
+    });
+
+    // =====================================================
+    // SPEICHER
+    // =====================================================
+
+    const collisionObjects = [];
+
+    const steps = [];
+    const landings = [];
+    const railings = [];
+    const railingPosts = [];
+    const sideWalls = [];
+
+    const connections = [];
+    const stairFlights = [];
+
+    let physicsRegistered = false;
+
+    // =====================================================
+    // HILFSFUNKTIONEN
+    // =====================================================
+
+    function addBox(
+        name,
+        w,
+        h,
+        d,
+        material,
+        x,
+        y,
+        z,
+        collision = false
+    ) {
+
         const mesh = new THREE.Mesh(
             new THREE.BoxGeometry(w, h, d),
             material
         );
 
+        mesh.name = name;
+
         mesh.position.set(x, y, z);
+
         mesh.castShadow = true;
         mesh.receiveShadow = true;
 
         group.add(mesh);
+
+        if (collision) {
+            collisionObjects.push(mesh);
+        }
+
         return mesh;
     }
 
-    // Einen langen Treppenabschnitt erzeugen
+    function addCylinder(
+        name,
+        radius,
+        length,
+        material,
+        x,
+        y,
+        z,
+        rotationX = 0,
+        rotationZ = 0,
+        collision = false
+    ) {
+
+        const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(
+                radius,
+                radius,
+                length,
+                12
+            ),
+            material
+        );
+
+        mesh.name = name;
+
+        mesh.position.set(x, y, z);
+
+        mesh.rotation.x = rotationX;
+        mesh.rotation.z = rotationZ;
+
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        group.add(mesh);
+
+        if (collision) {
+            collisionObjects.push(mesh);
+        }
+
+        return mesh;
+    }
+
+    function vector(x, y, z) {
+        return new THREE.Vector3(x, y, z);
+    }
+
+    function localToWorld(start, direction, forward, side) {
+
+        return vector(
+            start.x + direction.x * forward - direction.z * side,
+            start.y,
+            start.z + direction.z * forward + direction.x * side
+        );
+    }
+
+    function addRail(name, start, end, radius = 0.045) {
+
+        const direction = new THREE.Vector3().subVectors(
+            end,
+            start
+        );
+
+        const length = direction.length();
+
+        if (length < 0.001) {
+            return null;
+        }
+
+        const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(
+                radius,
+                radius,
+                length,
+                12
+            ),
+            handrailMaterial
+        );
+
+        mesh.name = name;
+
+        mesh.position.copy(start).add(end).multiplyScalar(0.5);
+
+        mesh.quaternion.setFromUnitVectors(
+            vector(0, 1, 0),
+            direction.normalize()
+        );
+
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        group.add(mesh);
+
+        railings.push(mesh);
+
+        return mesh;
+    }
+
+    // =====================================================
+    // GELÄNDER
+    // =====================================================
+
+    function createRailing(name, start, end, height) {
+
+        if (!settings.railingEnabled) {
+            return;
+        }
+
+        const direction = new THREE.Vector3().subVectors(
+            end,
+            start
+        );
+
+        const length = direction.length();
+
+        const postCount = Math.max(
+            2,
+            Math.ceil(length / 0.9)
+        );
+
+        const topStart = start.clone();
+        const topEnd = end.clone();
+
+        topStart.y += height;
+        topEnd.y += height;
+
+        const middleStart = start.clone();
+        const middleEnd = end.clone();
+
+        middleStart.y += height * 0.52;
+        middleEnd.y += height * 0.52;
+
+        // Oberer Handlauf
+        addRail(
+            name + "_Handlauf",
+            topStart,
+            topEnd,
+            0.055
+        );
+
+        // Mittlere Strebe
+        addRail(
+            name + "_Mittelstrebe",
+            middleStart,
+            middleEnd,
+            0.035
+        );
+
+        // Untere Strebe
+        const lowerStart = start.clone();
+        const lowerEnd = end.clone();
+
+        lowerStart.y += 0.12;
+        lowerEnd.y += 0.12;
+
+        addRail(
+            name + "_Unterstrebe",
+            lowerStart,
+            lowerEnd,
+            0.03
+        );
+
+        // Pfosten
+        for (let i = 0; i <= postCount; i++) {
+
+            const t = i / postCount;
+
+            const position = new THREE.Vector3().lerpVectors(
+                start,
+                end,
+                t
+            );
+
+            const post = addCylinder(
+                name + "_Pfosten_" + i,
+                0.045,
+                height,
+                metal,
+                position.x,
+                position.y + height / 2,
+                position.z,
+                0,
+                0,
+                true
+            );
+
+            railingPosts.push(post);
+
+            // Kleine Fußplatte
+            addBox(
+                name + "_Fussplatte_" + i,
+                0.16,
+                0.045,
+                0.16,
+                darkMetal,
+                position.x,
+                position.y + 0.025,
+                position.z
+            );
+        }
+    }
+
+    // =====================================================
+    // TREPPENWANGEN
+    // =====================================================
+
+    function createSideWall(
+        name,
+        start,
+        direction,
+        side,
+        length,
+        verticalHeight
+    ) {
+
+        const center = localToWorld(
+            start,
+            direction,
+            length / 2,
+            side * (width / 2 + 0.07)
+        );
+
+        const wall = addBox(
+            name,
+            length,
+            0.38,
+            0.16,
+            concreteDark,
+            center.x,
+            center.y - verticalHeight / 2 - 0.04,
+            center.z
+        );
+
+        wall.rotation.y = Math.atan2(
+            -direction.z,
+            direction.x
+        );
+
+        wall.rotation.z = -Math.atan2(
+            verticalHeight,
+            length
+        );
+
+        sideWalls.push(wall);
+
+        collisionObjects.push(wall);
+
+        return wall;
+    }
+
+    // =====================================================
+    // EIN TREPPENABSCHNITT
+    // =====================================================
+
     function createFlight(start, direction, level) {
-        const dx = direction.x;
-        const dz = direction.z;
 
         const horizontalLength = segmentLength;
+
         const verticalLength = floorHeight;
 
-        const slope = verticalLength / horizontalLength;
+        const angle = Math.atan2(
+            -direction.z,
+            direction.x
+        );
 
-        // Treppenstufen
+        const stepRise = verticalLength / stepCount;
+
+        const stepRotation = angle;
+
+        // ---------------------------------------------
+        // STUFEN
+        // ---------------------------------------------
+
         for (let i = 0; i < stepCount; i++) {
-            const t = (i + 0.5) / stepCount;
 
-            const x = start.x + dx * horizontalLength * t;
-            const z = start.z + dz * horizontalLength * t;
-            const y = start.y - verticalLength * t;
+            const forward = (i + 0.5) * stepDepth;
 
-            const step = new THREE.Mesh(
-                new THREE.BoxGeometry(
-                    width,
-                    stepHeight,
-                    stepDepth
-                ),
-                concrete
+            const rise = (i + 0.5) * stepRise;
+
+            const position = localToWorld(
+                start,
+                direction,
+                forward,
+                0
             );
 
-            step.position.set(x, y, z);
+            const step = addBox(
+                "Treppe_Etage_" + level + "_Stufe_" + i,
+                width,
+                settings.stepHeight,
+                stepDepth,
+                concrete,
+                position.x,
+                start.y - rise,
+                position.z,
+                true
+            );
 
-            // Stufen bleiben waagerecht.
-            step.rotation.y = Math.atan2(-dz, dx);
+            step.rotation.y = stepRotation;
 
-            group.add(step);
-            step.castShadow = true;
-            step.receiveShadow = true;
+            steps.push(step);
+
+            // Stufenvorderkante
+            const edgePosition = localToWorld(
+                start,
+                direction,
+                (i + 1) * stepDepth - 0.025,
+                0
+            );
+
+            const edge = addBox(
+                "Stufenkante_" + level + "_" + i,
+                width * 0.94,
+                0.035,
+                0.045,
+                concreteEdge,
+                edgePosition.x,
+                start.y - (i + 1) * stepRise + 0.02,
+                edgePosition.z
+            );
+
+            edge.rotation.y = stepRotation;
         }
 
-        // Seitliche Betonwangen
+        // ---------------------------------------------
+        // SEITLICHE BETONWANGEN
+        // ---------------------------------------------
+
         for (const side of [-1, 1]) {
-            const rail = new THREE.Mesh(
-                new THREE.BoxGeometry(
-                    horizontalLength,
-                    0.3,
-                    0.16
-                ),
-                concreteDark
-            );
 
-            rail.position.set(
-                start.x + dx * horizontalLength / 2,
-                start.y - verticalLength / 2,
-                start.z + dz * horizontalLength / 2
-                    + side * (width / 2 + 0.08)
+            createSideWall(
+                "Treppenwange_" + level + "_" + side,
+                start,
+                direction,
+                side,
+                horizontalLength,
+                verticalLength
             );
-
-            rail.rotation.y = Math.atan2(-dz, dx);
-            rail.rotation.z = -Math.atan2(
-                verticalLength,
-                horizontalLength
-            );
-
-            group.add(rail);
-            rail.castShadow = true;
         }
 
-        // Geländerpfosten und Handläufe
+        // ---------------------------------------------
+        // GELÄNDER
+        // ---------------------------------------------
+
         for (const side of [-1, 1]) {
-            const postCount = Math.ceil(stepCount / 3);
 
-            for (let i = 0; i <= postCount; i++) {
-                const t = i / postCount;
-
-                const post = new THREE.Mesh(
-                    new THREE.CylinderGeometry(
-                        0.035,
-                        0.045,
-                        0.9,
-                        12
-                    ),
-                    metal
-                );
-
-                post.position.set(
-                    start.x + dx * horizontalLength * t,
-                    start.y - verticalLength * t + 0.48,
-                    start.z + dz * horizontalLength * t
-                        + side * (width / 2 + 0.14)
-                );
-
-                group.add(post);
-                post.castShadow = true;
-            }
-
-            const rail = new THREE.Mesh(
-                new THREE.CylinderGeometry(
-                    0.045,
-                    0.045,
-                    horizontalLength,
-                    12
-                ),
-                handrailMaterial
+            const railStart = localToWorld(
+                start,
+                direction,
+                0,
+                side * (width / 2 + 0.17)
             );
 
-            rail.position.set(
-                start.x + dx * horizontalLength / 2,
-                start.y - verticalLength / 2 + 0.95,
-                start.z + dz * horizontalLength / 2
-                    + side * (width / 2 + 0.14)
+            const railEnd = localToWorld(
+                start,
+                direction,
+                horizontalLength,
+                side * (width / 2 + 0.17)
             );
 
-            rail.rotation.y = Math.atan2(-dz, dx);
-            rail.rotation.z = -Math.atan2(
-                verticalLength,
-                horizontalLength
+            createRailing(
+                "Treppengelaender_" + level + "_" + side,
+                railStart,
+                railEnd,
+                settings.railingHeight
             );
-
-            group.add(rail);
         }
+
+        // ---------------------------------------------
+        // ABSCHLUSSPOSITION
+        // ---------------------------------------------
+
+        const end = localToWorld(
+            start,
+            direction,
+            horizontalLength,
+            0
+        );
+
+        end.y -= verticalLength;
 
         return {
-            end: {
-                x: start.x + dx * horizontalLength,
-                y: start.y - verticalLength,
-                z: start.z + dz * horizontalLength
-            },
-            direction
+            end,
+            direction,
+            horizontalLength,
+            verticalLength
         };
     }
 
-    // Treppenverlauf über mehrere Etagen.
-    // Richtungswechsel um 90 Grad nach jedem Abschnitt.
-    const directions = [
-        { x: 1, z: 0 },
-        { x: 0, z: 1 },
-        { x: -1, z: 0 },
-        { x: 0, z: -1 }
-    ];
+    // =====================================================
+    // PODest
+    // =====================================================
 
-    const levels = options.levels ?? 4;
+    function createLanding(position, direction, level) {
 
-    let current = {
-        x: options.startX ?? 0,
-        y: options.startY ?? 0,
-        z: options.startZ ?? 0
-    };
+        const landingLength = settings.landingLength;
 
-    const connections = [];
-
-    for (let level = 0; level < levels; level++) {
-        const direction = directions[level % directions.length];
-
-        // Treppenabschnitt
-        const flight = createFlight(
-            current,
+        const center = localToWorld(
+            position,
             direction,
-            level
+            landingLength / 2,
+            0
         );
 
-        current = flight.end;
-
-        // Podest am Ende
-        addBox(
-            width + 0.3,
-            0.2,
-            width + 0.3,
+        const landing = addBox(
+            "Treppenpodest_" + level,
+            width + 0.45,
+            0.24,
+            landingLength,
             concreteDark,
+            center.x,
+            position.y - 0.12,
+            center.z,
+            true
+        );
+
+        landing.rotation.y = Math.atan2(
+            -direction.z,
+            direction.x
+        );
+
+        landings.push(landing);
+
+        // Podest-Oberfläche
+        const surface = addBox(
+            "Podestoberflaeche_" + level,
+            width + 0.35,
+            0.035,
+            landingLength - 0.12,
+            concrete,
+            center.x,
+            position.y + 0.015,
+            center.z
+        );
+
+        surface.rotation.y = landing.rotation.y;
+
+        // Warnstreifen an der Podestkante
+        const warningPosition = localToWorld(
+            position,
+            direction,
+            landingLength - 0.1,
+            0
+        );
+
+        const warningStripe = addBox(
+            "Podestwarnstreifen_" + level,
+            width + 0.2,
+            0.025,
+            0.1,
+            warningMaterial,
+            warningPosition.x,
+            position.y + 0.04,
+            warningPosition.z
+        );
+
+        warningStripe.rotation.y = landing.rotation.y;
+
+        return {
+            end: localToWorld(
+                position,
+                direction,
+                landingLength,
+                0
+            )
+        };
+    }
+
+    // =====================================================
+    // TREPPENVERLAUF
+    // =====================================================
+
+    const directions = [
+        vector(1, 0, 0),
+        vector(0, 0, 1),
+        vector(-1, 0, 0),
+        vector(0, 0, -1)
+    ];
+
+    let current = {
+        x: settings.startX,
+        y: settings.startY,
+        z: settings.startZ
+    };
+
+    let currentDirection = directions[
+        ((settings.direction % 4) + 4) % 4
+    ].clone();
+
+    for (let level = 0; level < settings.levels; level++) {
+
+        const start = vector(
             current.x,
-            current.y - 0.1,
+            current.y,
             current.z
         );
 
-        // Anschlussposition für den nächsten Abschnitt
-        connections.push({
-            x: current.x,
-            y: current.y,
-            z: current.z,
-            nextDirection: directions[(level + 1) % directions.length]
+        const flight = createFlight(
+            start,
+            currentDirection,
+            level + 1
+        );
+
+        const landingPosition = flight.end.clone();
+
+        const landing = createLanding(
+            landingPosition,
+            currentDirection,
+            level + 1
+        );
+
+        const connection = {
+
+            floor: level + 1,
+
+            x: landing.end.x,
+            y: landing.end.y,
+            z: landing.end.z,
+
+            position: landing.end.clone(),
+
+            nextDirection: directions[
+                (settings.direction + level + 1) % 4
+            ].clone()
+        };
+
+        connections.push(connection);
+
+        stairFlights.push({
+            level: level + 1,
+            start,
+            end: flight.end.clone(),
+            direction: currentDirection.clone()
         });
 
-        // Versatz für die nächste Treppe
-        const nextDirection = directions[(level + 1) % directions.length];
+        // Richtungswechsel
+        current = {
+            x: landing.end.x,
+            y: landing.end.y,
+            z: landing.end.z
+        };
 
-        current.x += nextDirection.x * (width + 0.3);
-        current.z += nextDirection.z * (width + 0.3);
+        currentDirection = directions[
+            (settings.direction + level + 1) % 4
+        ].clone();
+
+        // Seitlicher Versatz für den nächsten Treppenlauf
+        const sideDirection = vector(
+            -currentDirection.z,
+            0,
+            currentDirection.x
+        );
+
+        current.x += sideDirection.x * (width + 0.45);
+        current.z += sideDirection.z * (width + 0.45);
     }
 
+    // =====================================================
+    // PHYSIK-KOLLISIONEN
+    // =====================================================
+
+    function registerPhysics(physics) {
+
+        if (!physics) {
+            throw new Error(
+                "Treppen: Physik-System fehlt."
+            );
+        }
+
+        if (physicsRegistered) {
+            return;
+        }
+
+        if (!settings.createCollision) {
+            physicsRegistered = true;
+            return;
+        }
+
+        group.updateWorldMatrix(true, true);
+
+        const registered = new Set();
+
+        function registerObject(mesh) {
+
+            if (!mesh || registered.has(mesh)) {
+                return;
+            }
+
+            registered.add(mesh);
+
+            mesh.updateWorldMatrix(true, false);
+
+            const worldPosition = new THREE.Vector3();
+            const worldQuaternion = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+
+            mesh.getWorldPosition(worldPosition);
+            mesh.getWorldQuaternion(worldQuaternion);
+            mesh.getWorldScale(worldScale);
+
+            if (!mesh.geometry.boundingBox) {
+                mesh.geometry.computeBoundingBox();
+            }
+
+            const localSize = new THREE.Vector3();
+
+            mesh.geometry.boundingBox.getSize(localSize);
+
+            const size = new THREE.Vector3(
+                localSize.x * Math.abs(worldScale.x),
+                localSize.y * Math.abs(worldScale.y),
+                localSize.z * Math.abs(worldScale.z)
+            );
+
+            const collider = new THREE.Mesh(
+                new THREE.BoxGeometry(
+                    Math.max(size.x, 0.01),
+                    Math.max(size.y, 0.01),
+                    Math.max(size.z, 0.01)
+                )
+            );
+
+            collider.name = "Treppencollider_" + mesh.name;
+
+            collider.position.copy(worldPosition);
+            collider.quaternion.copy(worldQuaternion);
+
+            physics.addBox(collider, {
+                mass: 0
+            });
+        }
+
+        for (const object of collisionObjects) {
+            registerObject(object);
+        }
+
+        for (const post of railingPosts) {
+            registerObject(post);
+        }
+
+        physicsRegistered = true;
+    }
+
+    // =====================================================
+    // ABSCHLUSS
+    // =====================================================
+
     group.traverse(object => {
+
         if (object.isMesh) {
+
             object.castShadow = true;
             object.receiveShadow = true;
         }
     });
 
+    const endPosition = {
+        x: current.x,
+        y: current.y,
+        z: current.z
+    };
+
     return {
+
         group,
+
         connections,
-        endPosition: current,
+
+        endPosition,
+
         segmentLength,
-        floorHeight
+
+        floorHeight,
+
+        settings,
+
+        steps,
+
+        landings,
+
+        railings,
+
+        railingPosts,
+
+        sideWalls,
+
+        stairFlights,
+
+        collisionObjects,
+
+        registerPhysics,
+
+        get physicsRegistered() {
+            return physicsRegistered;
+        }
     };
 }
