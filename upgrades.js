@@ -2,6 +2,37 @@
 function createUpgradeSystem(options = {}) {
 
     // =========================================
+    // KONFIGURATION
+    // =========================================
+
+    const settings = {
+        key: options.key || "KeyQ"
+    };
+
+    // Coins, die zum Erreichen der nächsten Etage
+    // benötigt werden. Über options.floors anpassbar.
+    const floors = Array.isArray(options.floors) &&
+        options.floors.length > 0
+        ? [...options.floors]
+        : [
+            100,
+            250,
+            500,
+            1000,
+            2500,
+            5000,
+            10000,
+            25000,
+            50000,
+            100000
+        ];
+
+    const totalGoal = floors.reduce(
+        (sum, value) => sum + value,
+        0
+    );
+
+    // =========================================
     // DATEN
     // =========================================
 
@@ -13,6 +44,12 @@ function createUpgradeSystem(options = {}) {
 
     let menuOpen = false;
     let activeTab = "hands";
+
+    let currentFloor = 0;
+    let floorCoins = 0;
+
+    let vacuumActive = false;
+    let vacuumTimer = 0;
 
     const purchased = new Set();
 
@@ -42,7 +79,9 @@ function createUpgradeSystem(options = {}) {
     // =========================================
 
     function getTaskGoal(level) {
-        return Math.floor(50 * Math.pow(1.5, level - 1));
+        return Math.floor(
+            50 * Math.pow(1.5, level - 1)
+        );
     }
 
     function addCollectedCoins(amount) {
@@ -53,7 +92,6 @@ function createUpgradeSystem(options = {}) {
 
         totalCollected += amount;
 
-        // Coins werden nur für die aktuelle Aufgabe gezählt.
         let remaining = amount;
 
         while (remaining > 0) {
@@ -61,7 +99,10 @@ function createUpgradeSystem(options = {}) {
             const goal = getTaskGoal(taskLevel);
             const needed = goal - taskProgress;
 
-            const collected = Math.min(remaining, needed);
+            const collected = Math.min(
+                remaining,
+                needed
+            );
 
             taskProgress += collected;
             remaining -= collected;
@@ -213,7 +254,9 @@ function createUpgradeSystem(options = {}) {
                     description: "Erhöhe deine Taschenkapazität auf " +
                         capacity.toLocaleString("de-DE") + " Coins.",
                     cost: index + 1,
-                    requires: index === 0 ? [] : ["bag_" + index],
+                    requires: index === 0
+                        ? []
+                        : ["bag_" + index],
                     apply() {
                         stats.bagCapacity = capacity;
                     }
@@ -335,7 +378,9 @@ function createUpgradeSystem(options = {}) {
 
         for (const tree of Object.values(upgradeTrees)) {
 
-            const upgrade = tree.upgrades.find(item => item.id === id);
+            const upgrade = tree.upgrades.find(
+                item => item.id === id
+            );
 
             if (!upgrade) continue;
 
@@ -574,7 +619,11 @@ function createUpgradeSystem(options = {}) {
     function updateTaskUI() {
 
         const goal = getTaskGoal(taskLevel);
-        const percentage = Math.min(100, taskProgress / goal * 100);
+
+        const percentage = Math.min(
+            100,
+            taskProgress / goal * 100
+        );
 
         taskUI.querySelector(".taskName").textContent =
             "Sammle " + goal.toLocaleString("de-DE") + " Coins";
@@ -606,7 +655,8 @@ function createUpgradeSystem(options = {}) {
             const button = document.createElement("button");
 
             button.textContent = tree.title;
-            button.className = activeTab === id ? "active" : "";
+            button.className =
+                activeTab === id ? "active" : "";
 
             button.onclick = () => {
                 activeTab = id;
@@ -633,7 +683,8 @@ function createUpgradeSystem(options = {}) {
                 requirement => purchased.has(requirement)
             );
 
-            const canBuy = unlocked &&
+            const canBuy =
+                unlocked &&
                 skillPoints >= upgrade.cost &&
                 !bought;
 
@@ -642,32 +693,48 @@ function createUpgradeSystem(options = {}) {
             card.className = "upgradeCard";
 
             if (bought) card.classList.add("bought");
-            if (!unlocked && !bought) card.classList.add("locked");
+
+            if (!unlocked && !bought) {
+                card.classList.add("locked");
+            }
 
             const requirements = upgrade.requires.length
                 ? "Benötigt: " + upgrade.requires.join(", ")
                 : "Start-Upgrade";
 
-            card.innerHTML = `
-                <h3>${upgrade.name}</h3>
-                <p>${upgrade.description}</p>
-                <div style="color:#aaa;font-size:11px;margin-bottom:12px">
-                    ${requirements}
-                </div>
-                <button ${canBuy ? "" : "disabled"}>
-                    ${bought
-                        ? "Gekauft"
-                        : !unlocked
-                            ? "Gesperrt"
-                            : upgrade.cost + " Skillpunkte"}
-                </button>
-            `;
+            const title = document.createElement("h3");
+            title.textContent = upgrade.name;
 
-            card.querySelector("button").onclick = () => {
+            const description = document.createElement("p");
+            description.textContent = upgrade.description;
+
+            const requirementText = document.createElement("div");
+            requirementText.style.cssText =
+                "color:#aaa;font-size:11px;margin-bottom:12px";
+            requirementText.textContent = requirements;
+
+            const button = document.createElement("button");
+
+            button.disabled = !canBuy;
+
+            button.textContent = bought
+                ? "Gekauft"
+                : !unlocked
+                    ? "Gesperrt"
+                    : upgrade.cost + " Skillpunkte";
+
+            button.onclick = () => {
                 if (buyUpgrade(upgrade.id)) {
                     renderUpgrades();
                 }
             };
+
+            card.append(
+                title,
+                description,
+                requirementText,
+                button
+            );
 
             grid.appendChild(card);
         }
@@ -690,12 +757,13 @@ function createUpgradeSystem(options = {}) {
 
     function setMenu(open) {
 
-        menuOpen = open;
+        menuOpen = Boolean(open);
 
-        menu.style.display = open ? "block" : "none";
+        menu.style.display =
+            menuOpen ? "block" : "none";
 
         if (options.onMenuToggle) {
-            options.onMenuToggle(open);
+            options.onMenuToggle(menuOpen);
         }
 
         updateUI();
@@ -725,12 +793,16 @@ function createUpgradeSystem(options = {}) {
     };
 
     // =========================================
-    // ÖFFENTLICHE FUNKTIONEN
+    // SKILLPUNKTE UND COINS
     // =========================================
 
     function addSkillPoints(amount) {
 
-        skillPoints += Math.max(0, Math.floor(amount));
+        amount = Math.max(0, Math.floor(amount));
+
+        if (amount <= 0) return;
+
+        skillPoints += amount;
 
         updateUI();
     }
@@ -764,7 +836,9 @@ function createUpgradeSystem(options = {}) {
     }
 
     function getUpgradeLevel(treeId) {
+
         const tree = upgradeTrees[treeId];
+
         if (!tree) return 0;
 
         return tree.upgrades.filter(
@@ -778,15 +852,46 @@ function createUpgradeSystem(options = {}) {
 
     function addFloorCoins(amount) {
 
-        floorCoins += amount;
+        amount = Math.max(0, Math.floor(amount));
 
-        if (floorCoins >= floors[currentFloor]) {
+        if (amount <= 0) return;
 
-            floorCoins = floors[currentFloor];
+        let remaining = amount;
 
-            if (currentFloor < floors.length - 1) {
-                currentFloor++;
-                floorCoins = 0;
+        while (
+            remaining > 0 &&
+            currentFloor < floors.length
+        ) {
+
+            const goal = floors[currentFloor];
+            const needed = goal - floorCoins;
+
+            const collected = Math.min(
+                remaining,
+                needed
+            );
+
+            floorCoins += collected;
+            remaining -= collected;
+
+            if (floorCoins >= goal) {
+
+                if (currentFloor < floors.length - 1) {
+
+                    currentFloor++;
+                    floorCoins = 0;
+
+                    if (options.onFloorComplete) {
+                        options.onFloorComplete(
+                            currentFloor
+                        );
+                    }
+
+                } else {
+
+                    floorCoins = goal;
+                    remaining = 0;
+                }
             }
         }
 
@@ -801,12 +906,15 @@ function createUpgradeSystem(options = {}) {
     }
 
     function getFloorInfo() {
+
         return {
             floor: currentFloor + 1,
             coins: floorCoins,
             goal: floors[currentFloor],
             totalGoal,
-            floors: [...floors]
+            floors: [...floors],
+            completed: currentFloor === floors.length - 1 &&
+                floorCoins >= floors[currentFloor]
         };
     }
 
@@ -814,17 +922,28 @@ function createUpgradeSystem(options = {}) {
     // STAUBSAUGER
     // =========================================
 
-    function updateVacuum(deltaTime, nearbyCoins, absorbCoin) {
+    function updateVacuum(
+        deltaTime,
+        nearbyCoins,
+        absorbCoin
+    ) {
 
-        if (!stats.vacuumEnabled || !vacuumActive) return;
+        if (
+            !stats.vacuumEnabled ||
+            !vacuumActive ||
+            typeof absorbCoin !== "function" ||
+            !Array.isArray(nearbyCoins)
+        ) {
+            return;
+        }
 
-        vacuumTimer += deltaTime;
+        vacuumTimer += Math.max(0, deltaTime);
 
         const interval = 5 / stats.vacuumSpeed;
 
         if (vacuumTimer < interval) return;
 
-        vacuumTimer = 0;
+        vacuumTimer -= interval;
 
         let absorbed = 0;
 
@@ -832,12 +951,22 @@ function createUpgradeSystem(options = {}) {
 
             if (absorbed >= stats.vacuumAmount) break;
 
-            absorbCoin(coin);
+            // Coins nur als erfolgreich gesammelt zählen,
+            // wenn der Callback nicht fehlschlägt.
+            try {
+                absorbCoin(coin);
 
-            addFloorCoins(1);
-            addCollectedCoins(1);
+                addFloorCoins(1);
+                addCollectedCoins(1);
 
-            absorbed++;
+                absorbed++;
+
+            } catch (error) {
+                console.error(
+                    "Fehler beim Einsaugen eines Coins:",
+                    error
+                );
+            }
         }
     }
 
@@ -845,9 +974,16 @@ function createUpgradeSystem(options = {}) {
         vacuumActive = Boolean(active);
     }
 
+    // =========================================
+    // AUFRÄUMEN
+    // =========================================
+
     function dispose() {
 
-        document.removeEventListener("keydown", keyHandler);
+        document.removeEventListener(
+            "keydown",
+            keyHandler
+        );
 
         style.remove();
         taskUI.remove();
