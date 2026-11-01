@@ -1,11 +1,9 @@
 
 function createBunker(THREE, options = {}) {
 
-    const group = new THREE.Group();
-
-    // =========================================
-    // ABMESSUNGEN
-    // =========================================
+    // =====================================================
+    // EINSTELLUNGEN
+    // =====================================================
 
     const settings = {
         width: options.width ?? 32,
@@ -14,9 +12,22 @@ function createBunker(THREE, options = {}) {
 
         wallThickness: options.wallThickness ?? 1.2,
         floorThickness: options.floorThickness ?? 1.2,
-        ceilingThickness: options.ceilingThickness ?? 1,
 
-        createCeiling: options.createCeiling ?? false
+        floors: options.floors ?? 10,
+
+        shaftWidth: options.shaftWidth ?? 10,
+        shaftDepth: options.shaftDepth ?? 10,
+
+        platformThickness: options.platformThickness ?? 0.35,
+
+        railingHeight: options.railingHeight ?? 1.15,
+        railingEnabled: options.railingEnabled ?? true,
+
+        createCeiling: options.createCeiling ?? false,
+        details: options.details ?? true,
+
+        stairWidth: options.stairWidth ?? 5.5,
+        stairSide: options.stairSide ?? "right"
     };
 
     const W = settings.width;
@@ -24,48 +35,90 @@ function createBunker(THREE, options = {}) {
     const H = settings.height;
     const WT = settings.wallThickness;
 
+    const floorCount = Math.max(
+        2,
+        Math.floor(settings.floors)
+    );
+
+    const shaftW = Math.min(settings.shaftWidth, W - 8);
+    const shaftD = Math.min(settings.shaftDepth, D - 8);
+
+    const innerHalfW = shaftW / 2;
+    const innerHalfD = shaftD / 2;
+
+    const outerHalfW = W / 2 - WT - 0.5;
+    const outerHalfD = D / 2 - WT - 0.5;
+
+    const sideWidth = outerHalfW - innerHalfW;
+    const frontDepth = outerHalfD - innerHalfD;
+
+    const usableHeight = H - 1.6;
+    const levelSpacing = usableHeight / (floorCount - 1);
+
+    const group = new THREE.Group();
+    group.name = "ONE_MILLION_COINS_BUNKER";
+
     const collisionObjects = [];
+    const floorPlatforms = [];
+    const floorHeights = [0];
+    const railings = [];
+    const railingPosts = [];
+    const lightPositions = [];
 
-    // =========================================
+    let physicsRegistered = false;
+
+    // =====================================================
     // MATERIALIEN
-    // =========================================
+    // =====================================================
 
-    const concreteMaterial = new THREE.MeshStandardMaterial({
-        color: 0x777873,
-        roughness: 0.96,
-        metalness: 0.02
-    });
+    const materials = {
 
-    const floorMaterial = new THREE.MeshStandardMaterial({
-        color: 0x555956,
-        roughness: 0.92
-    });
+        concrete: new THREE.MeshStandardMaterial({
+            color: 0x777b77,
+            roughness: 0.96
+        }),
 
-    const darkConcreteMaterial = new THREE.MeshStandardMaterial({
-        color: 0x454947,
-        roughness: 0.95
-    });
+        floor: new THREE.MeshStandardMaterial({
+            color: 0x555c59,
+            roughness: 0.92
+        }),
 
-    const metalMaterial = new THREE.MeshStandardMaterial({
-        color: 0x555d61,
-        metalness: 0.8,
-        roughness: 0.4
-    });
+        darkConcrete: new THREE.MeshStandardMaterial({
+            color: 0x3c4441,
+            roughness: 0.96
+        }),
 
-    const darkMetalMaterial = new THREE.MeshStandardMaterial({
-        color: 0x202629,
-        metalness: 0.65,
-        roughness: 0.55
-    });
+        reinforcedConcrete: new THREE.MeshStandardMaterial({
+            color: 0x505754,
+            roughness: 0.94
+        }),
 
-    const yellowMaterial = new THREE.MeshStandardMaterial({
-        color: 0xb99842,
-        roughness: 0.8
-    });
+        metal: new THREE.MeshStandardMaterial({
+            color: 0x788286,
+            metalness: 0.82,
+            roughness: 0.36
+        }),
 
-    // =========================================
-    // HILFSFUNKTION
-    // =========================================
+        darkMetal: new THREE.MeshStandardMaterial({
+            color: 0x22292c,
+            metalness: 0.72,
+            roughness: 0.48
+        }),
+
+        yellow: new THREE.MeshStandardMaterial({
+            color: 0xc2a04b,
+            roughness: 0.72
+        }),
+
+        black: new THREE.MeshStandardMaterial({
+            color: 0x171b1d,
+            roughness: 0.9
+        })
+    };
+
+    // =====================================================
+    // HILFSFUNKTIONEN
+    // =====================================================
 
     function addBox(
         name,
@@ -108,7 +161,8 @@ function createBunker(THREE, options = {}) {
         z,
         material,
         rotationX = 0,
-        rotationZ = 0
+        rotationZ = 0,
+        collision = false
     ) {
 
         const mesh = new THREE.Mesh(
@@ -116,13 +170,14 @@ function createBunker(THREE, options = {}) {
                 radius,
                 radius,
                 length,
-                20
+                12
             ),
             material
         );
 
         mesh.name = name;
         mesh.position.set(x, y, z);
+
         mesh.rotation.x = rotationX;
         mesh.rotation.z = rotationZ;
 
@@ -131,302 +186,546 @@ function createBunker(THREE, options = {}) {
 
         group.add(mesh);
 
+        if (collision) {
+            collisionObjects.push(mesh);
+        }
+
         return mesh;
     }
 
-    // =========================================
-    // FUNDAMENT
-    // =========================================
+    function addRail(
+        name,
+        start,
+        end,
+        radius = 0.045
+    ) {
+
+        const direction = new THREE.Vector3().subVectors(
+            end,
+            start
+        );
+
+        const length = direction.length();
+
+        const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(
+                radius,
+                radius,
+                length,
+                10
+            ),
+            materials.metal
+        );
+
+        mesh.name = name;
+
+        mesh.position.copy(start).add(end).multiplyScalar(0.5);
+
+        mesh.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            direction.clone().normalize()
+        );
+
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        group.add(mesh);
+
+        railings.push(mesh);
+
+        return mesh;
+    }
+
+    // =====================================================
+    // FUNDAMENT UND ERDGESCHOSS
+    // =====================================================
 
     addBox(
         "Bunker_Fundament",
         W + WT * 2,
-        1,
+        1.2,
         D + WT * 2,
         0,
-        -0.9,
+        -1.1,
         0,
-        darkConcreteMaterial,
+        materials.darkConcrete,
         true
     );
 
-    // =========================================
-    // BODEN
-    // =========================================
-
     addBox(
-        "Bunker_Boden",
+        "Erdgeschoss_Boden",
         W,
         settings.floorThickness,
         D,
         0,
         -settings.floorThickness / 2,
         0,
-        floorMaterial,
+        materials.floor,
         true
     );
 
-    // =========================================
-    // VIER MASSIVE AUSSENWÄNDE
-    // =========================================
+    // =====================================================
+    // AUSSENWÄNDE
+    // =====================================================
 
     addBox(
-        "Wand_Links",
+        "Aussenwand_Links",
         WT,
         H,
         D + WT * 2,
         -W / 2 - WT / 2,
         H / 2,
         0,
-        concreteMaterial,
+        materials.concrete,
         true
     );
 
     addBox(
-        "Wand_Rechts",
+        "Aussenwand_Rechts",
         WT,
         H,
         D + WT * 2,
         W / 2 + WT / 2,
         H / 2,
         0,
-        concreteMaterial,
+        materials.concrete,
         true
     );
 
     addBox(
-        "Wand_Hinten",
+        "Aussenwand_Hinten",
         W,
         H,
         WT,
         0,
         H / 2,
         -D / 2 - WT / 2,
-        concreteMaterial,
+        materials.concrete,
         true
     );
 
     addBox(
-        "Wand_Vorne",
+        "Aussenwand_Vorne",
         W,
         H,
         WT,
         0,
         H / 2,
         D / 2 + WT / 2,
-        concreteMaterial,
+        materials.concrete,
         true
     );
-
-    // =========================================
-    // DECKE OPTIONAL
-    // =========================================
 
     if (settings.createCeiling) {
 
         addBox(
             "Bunker_Decke",
             W + WT * 2,
-            settings.ceilingThickness,
+            0.8,
             D + WT * 2,
             0,
-            H + settings.ceilingThickness / 2,
+            H + 0.4,
             0,
-            darkConcreteMaterial,
+            materials.darkConcrete,
             true
         );
     }
 
-    // =========================================
+    // =====================================================
     // BETONSTÜTZEN
-    // =========================================
+    // =====================================================
 
     const supportPositions = [
         [-W / 2 + 1.5, -D / 2 + 1.5],
-        [ W / 2 - 1.5, -D / 2 + 1.5],
-        [-W / 2 + 1.5,  D / 2 - 1.5],
-        [ W / 2 - 1.5,  D / 2 - 1.5]
+        [W / 2 - 1.5, -D / 2 + 1.5],
+        [-W / 2 + 1.5, D / 2 - 1.5],
+        [W / 2 - 1.5, D / 2 - 1.5],
+        [-W / 2 + 1.5, 0],
+        [W / 2 - 1.5, 0],
+        [0, -D / 2 + 1.5],
+        [0, D / 2 - 1.5]
     ];
 
     supportPositions.forEach((position, index) => {
 
-        const [x, z] = position;
-
         addBox(
             "Betonstuetze_" + index,
-            0.75,
+            0.8,
             H,
-            0.75,
-            x,
+            0.8,
+            position[0],
             H / 2,
-            z,
-            darkConcreteMaterial,
+            position[1],
+            materials.reinforcedConcrete,
             true
         );
     });
 
-    // =========================================
-    // DECKENBALKEN
-    // =========================================
-
-    for (let z = -D / 2 + 3; z < D / 2; z += 6) {
-
-        addBox(
-            "Deckenbalken",
-            W,
-            0.35,
-            0.45,
-            0,
-            H - 0.25,
-            z,
-            darkConcreteMaterial
-        );
-    }
-
-    // =========================================
+    // =====================================================
     // WANDVERSTÄRKUNGEN
-    // =========================================
+    // =====================================================
 
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
 
-        const z = -D / 2 + 3 + i * 6;
+        const z = -D / 2 + 3 + i * (D - 6) / 5;
 
         addBox(
-            "Verstaerkung_Links_" + i,
-            0.2,
+            "Stahlverstaerkung_Links_" + i,
+            0.12,
             H,
-            0.3,
-            -W / 2 + WT,
+            0.16,
+            -W / 2 + WT + 0.08,
             H / 2,
             z,
-            darkConcreteMaterial
+            materials.darkMetal
         );
 
         addBox(
-            "Verstaerkung_Rechts_" + i,
-            0.2,
+            "Stahlverstaerkung_Rechts_" + i,
+            0.12,
             H,
-            0.3,
-            W / 2 - WT,
+            0.16,
+            W / 2 - WT - 0.08,
             H / 2,
             z,
-            darkConcreteMaterial
+            materials.darkMetal
         );
     }
 
-    // =========================================
-    // OBERE KLEINE PLATTFORM
-    // =========================================
+    // =====================================================
+    // ETAGENHÖHEN
+    // =====================================================
 
-    const platformWidth = 7;
-    const platformDepth = 5;
-    const platformHeight = 0.45;
+    for (let level = 1; level < floorCount; level++) {
 
-    const platformX = -W / 2 + platformWidth / 2 + 1;
-    const platformZ = -D / 2 + platformDepth / 2 + 1;
+        floorHeights.push(level * levelSpacing);
+    }
 
-    const upperPlatform = addBox(
-        "Obere_Plattform",
-        platformWidth,
-        platformHeight,
-        platformDepth,
-        platformX,
-        H - platformHeight / 2 - 0.2,
-        platformZ,
-        floorMaterial,
-        true
-    );
+    // =====================================================
+    // ETAGENPLATTFORMEN
+    // =====================================================
 
-    // Metallkante der Plattform
-    addBox(
-        "Plattform_Kante",
-        platformWidth + 0.15,
-        0.12,
-        platformDepth + 0.15,
-        platformX,
-        H - platformHeight - 0.1,
-        platformZ,
-        metalMaterial
-    );
+    function createPlatformPiece(
+        parent,
+        name,
+        width,
+        depth,
+        x,
+        z,
+        pieces
+    ) {
 
-    // =========================================
-    // GELÄNDER DER OBEREN PLATTFORM
-    // =========================================
+        const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(
+                width,
+                settings.platformThickness,
+                depth
+            ),
+            materials.floor
+        );
 
-    const railingY = H - 0.2;
+        mesh.name = name;
 
-    // Hinteres Geländer
-    addCylinder(
-        "Plattform_Gelaender_Hinten",
-        0.045,
-        platformWidth,
-        platformX,
-        railingY,
-        platformZ - platformDepth / 2,
-        metalMaterial,
-        0,
-        Math.PI / 2
-    );
-
-    // Rechtes Geländer
-    addCylinder(
-        "Plattform_Gelaender_Rechts",
-        0.045,
-        platformDepth,
-        platformX + platformWidth / 2,
-        railingY,
-        platformZ,
-        metalMaterial
-    );
-
-    // Geländerpfosten
-    for (let i = 0; i < 5; i++) {
-
-        const x = platformX - platformWidth / 2 + i * platformWidth / 4;
-
-        addCylinder(
-            "Plattform_Pfosten_" + i,
-            0.055,
-            1,
+        mesh.position.set(
             x,
-            railingY - 0.5,
-            platformZ - platformDepth / 2,
-            metalMaterial
+            -settings.platformThickness / 2,
+            z
+        );
+
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        parent.add(mesh);
+
+        pieces.push(mesh);
+        collisionObjects.push(mesh);
+
+        return mesh;
+    }
+
+    function createRailingSegment(
+        name,
+        start,
+        end,
+        postCount
+    ) {
+
+        const height = settings.railingHeight;
+
+        const topStart = start.clone();
+        const topEnd = end.clone();
+
+        topStart.y += height;
+        topEnd.y += height;
+
+        const middleStart = start.clone();
+        const middleEnd = end.clone();
+
+        middleStart.y += height * 0.5;
+        middleEnd.y += height * 0.5;
+
+        addRail(name + "_Oben", topStart, topEnd);
+        addRail(name + "_Mitte", middleStart, middleEnd);
+
+        for (let i = 0; i <= postCount; i++) {
+
+            const t = i / postCount;
+
+            const position = new THREE.Vector3().lerpVectors(
+                start,
+                end,
+                t
+            );
+
+            const post = addCylinder(
+                name + "_Pfosten_" + i,
+                0.055,
+                height,
+                position.x,
+                position.y + height / 2,
+                position.z,
+                materials.metal,
+                0,
+                0,
+                true
+            );
+
+            railingPosts.push(post);
+        }
+    }
+
+    function createFloorPlatform(level, y) {
+
+        const floorGroup = new THREE.Group();
+
+        floorGroup.name = "Etage_" + level;
+        floorGroup.position.y = y;
+
+        group.add(floorGroup);
+
+        const pieces = [];
+
+        createPlatformPiece(
+            floorGroup,
+            "Etage_" + level + "_Links",
+            sideWidth,
+            outerHalfD * 2,
+            -(innerHalfW + sideWidth / 2),
+            0,
+            pieces
+        );
+
+        createPlatformPiece(
+            floorGroup,
+            "Etage_" + level + "_Rechts",
+            sideWidth,
+            outerHalfD * 2,
+            innerHalfW + sideWidth / 2,
+            0,
+            pieces
+        );
+
+        createPlatformPiece(
+            floorGroup,
+            "Etage_" + level + "_Hinten",
+            shaftW,
+            frontDepth,
+            0,
+            -(innerHalfD + frontDepth / 2),
+            pieces
+        );
+
+        createPlatformPiece(
+            floorGroup,
+            "Etage_" + level + "_Vorne",
+            shaftW,
+            frontDepth,
+            0,
+            innerHalfD + frontDepth / 2,
+            pieces
+        );
+
+        // Geländer um den offenen Schacht
+        if (settings.railingEnabled) {
+
+            const railY = y - settings.platformThickness;
+
+            createRailingSegment(
+                "Etage_" + level + "_Geländer_Hinten",
+                new THREE.Vector3(-innerHalfW, railY, -innerHalfD),
+                new THREE.Vector3(innerHalfW, railY, -innerHalfD),
+                5
+            );
+
+            createRailingSegment(
+                "Etage_" + level + "_Geländer_Vorne",
+                new THREE.Vector3(-innerHalfW, railY, innerHalfD),
+                new THREE.Vector3(innerHalfW, railY, innerHalfD),
+                5
+            );
+
+            createRailingSegment(
+                "Etage_" + level + "_Geländer_Links",
+                new THREE.Vector3(-innerHalfW, railY, -innerHalfD),
+                new THREE.Vector3(-innerHalfW, railY, innerHalfD),
+                5
+            );
+
+            createRailingSegment(
+                "Etage_" + level + "_Geländer_Rechts",
+                new THREE.Vector3(innerHalfW, railY, -innerHalfD),
+                new THREE.Vector3(innerHalfW, railY, innerHalfD),
+                5
+            );
+        }
+
+        floorPlatforms.push({
+            level,
+            y,
+            group: floorGroup,
+            pieces
+        });
+    }
+
+    for (let level = 1; level < floorCount; level++) {
+
+        createFloorPlatform(
+            level,
+            floorHeights[level]
         );
     }
 
-    // =========================================
-    // TREPPENBEREICH
-    // =========================================
+    // =====================================================
+    // AUSSENGELÄNDER AN DEN PLATTFORMEN
+    // =====================================================
 
-    // Große freie Fläche entlang der rechten Wand.
-    // Hier wird später treppe.js eingesetzt.
+    if (settings.railingEnabled) {
+
+        for (let level = 1; level < floorCount; level++) {
+
+            const y = floorHeights[level] - settings.platformThickness;
+
+            const railOffset = 0.25;
+
+            createRailingSegment(
+                "Aussengeländer_Hinten_" + level,
+                new THREE.Vector3(
+                    -outerHalfW,
+                    y,
+                    -outerHalfD + railOffset
+                ),
+                new THREE.Vector3(
+                    outerHalfW,
+                    y,
+                    -outerHalfD + railOffset
+                ),
+                15
+            );
+
+            createRailingSegment(
+                "Aussengeländer_Vorne_" + level,
+                new THREE.Vector3(
+                    -outerHalfW,
+                    y,
+                    outerHalfD - railOffset
+                ),
+                new THREE.Vector3(
+                    outerHalfW,
+                    y,
+                    outerHalfD - railOffset
+                ),
+                15
+            );
+
+            createRailingSegment(
+                "Aussengeländer_Links_" + level,
+                new THREE.Vector3(
+                    -outerHalfW + railOffset,
+                    y,
+                    -outerHalfD
+                ),
+                new THREE.Vector3(
+                    -outerHalfW + railOffset,
+                    y,
+                    outerHalfD
+                ),
+                15
+            );
+
+            createRailingSegment(
+                "Aussengeländer_Rechts_" + level,
+                new THREE.Vector3(
+                    outerHalfW - railOffset,
+                    y,
+                    -outerHalfD
+                ),
+                new THREE.Vector3(
+                    outerHalfW - railOffset,
+                    y,
+                    outerHalfD
+                ),
+                15
+            );
+        }
+    }
+
+    // =====================================================
+    // TREPPENBEREICH
+    // =====================================================
+
+    const stairX = settings.stairSide === "left"
+        ? -W / 2 + WT + settings.stairWidth / 2
+        : W / 2 - WT - settings.stairWidth / 2;
 
     const stairArea = {
-        side: "right",
 
-        width: 7,
+        side: settings.stairSide,
 
-        length: D - 3,
+        width: settings.stairWidth,
+
+        length: D - 5,
 
         height: H,
 
+        floors: floorCount,
+
+        floorHeights: [...floorHeights],
+
         center: new THREE.Vector3(
-            W / 2 - 4,
+            stairX,
             H / 2,
             0
         ),
 
         wallPosition: new THREE.Vector3(
-            W / 2 - WT / 2,
+            settings.stairSide === "left"
+                ? -W / 2 + WT
+                : W / 2 - WT,
             H / 2,
             0
-        )
+        ),
+
+        startPosition: new THREE.Vector3(
+            stairX,
+            0,
+            D / 2 - 3
+        ),
+
+        endPosition: new THREE.Vector3(
+            stairX,
+            H - 1.6,
+            -D / 2 + 3
+        ),
+
+        floorSpacing: levelSpacing,
+
+        shaftWidth: shaftW,
+        shaftDepth: shaftD
     };
 
-    // =========================================
-    // MASCHINENPLATTFORM
-    // =========================================
+    // =====================================================
+    // MASCHINENFUNDAMENT
+    // =====================================================
 
     const machinePosition = new THREE.Vector3(
         -W / 2 + 8,
@@ -442,7 +741,7 @@ function createBunker(THREE, options = {}) {
         machinePosition.x,
         0.15,
         machinePosition.z,
-        darkConcreteMaterial,
+        materials.darkConcrete,
         true
     );
 
@@ -454,71 +753,242 @@ function createBunker(THREE, options = {}) {
         machinePosition.x,
         0.34,
         machinePosition.z,
-        metalMaterial
+        materials.metal,
+        true
     );
 
-    // =========================================
+    // =====================================================
     // BODENMARKIERUNGEN
-    // =========================================
-
-    const markingMaterial = new THREE.MeshStandardMaterial({
-        color: 0xb99b4b,
-        roughness: 0.85
-    });
+    // =====================================================
 
     for (let i = 0; i < 12; i++) {
 
         addBox(
             "Bodenmarkierung_" + i,
-            0.5,
-            0.015,
+            0.55,
+            0.025,
             0.12,
             -W / 2 + 2 + i * 0.8,
-            0.01,
+            0.015,
             D / 2 - 1,
-            markingMaterial
+            materials.yellow
         );
     }
 
-    // =========================================
-    // DECKENLICHT-POSITIONEN
-    // =========================================
+    // =====================================================
+    // WANDDETAILS
+    // =====================================================
 
-    const lightPositions = [];
+    if (settings.details) {
 
-    for (let x = -W / 2 + 4; x <= W / 2 - 4; x += 6) {
+        for (let i = 0; i < 8; i++) {
 
-        for (let z = -D / 2 + 4; z <= D / 2 - 4; z += 6) {
+            const x = -W / 2 + 3 + i * 3.7;
 
-            lightPositions.push(
-                new THREE.Vector3(
-                    x,
-                    H - 0.5,
-                    z
-                )
+            addBox(
+                "Rueckwand_Metallplatte_" + i,
+                1.3,
+                1.8,
+                0.08,
+                x,
+                2.5,
+                -D / 2 + WT + 0.05,
+                materials.darkMetal
             );
+        }
+
+        for (let level = 0; level < floorCount; level++) {
+
+            const y = floorHeights[level] + 0.4;
+
+            for (let i = 0; i < 5; i++) {
+
+                const x = -W / 2 + 3 + i * 6;
+
+                addCylinder(
+                    "Wandbolzen_" + level + "_" + i,
+                    0.075,
+                    0.1,
+                    x,
+                    y,
+                    -D / 2 + WT + 0.1,
+                    materials.metal,
+                    Math.PI / 2
+                );
+            }
         }
     }
 
-    // =========================================
-    // PHYSIK-REGISTRIERUNG
-    // =========================================
+    // =====================================================
+    // LICHTPOSITIONEN
+    // =====================================================
+
+    for (let level = 0; level < floorCount; level++) {
+
+        const y = level === floorCount - 1
+            ? Math.min(H - 0.6, floorHeights[level] + 0.8)
+            : floorHeights[level] + Math.min(
+                1.7,
+                levelSpacing * 0.65
+            );
+
+        const positions = [
+            [-W / 2 + 4, y, -D / 2 + 4],
+            [W / 2 - 4, y, -D / 2 + 4],
+            [-W / 2 + 4, y, D / 2 - 4],
+            [W / 2 - 4, y, D / 2 - 4],
+            [0, y, -D / 2 + 4],
+            [0, y, D / 2 - 4]
+        ];
+
+        positions.forEach(position => {
+
+            lightPositions.push({
+                position: new THREE.Vector3(
+                    position[0],
+                    position[1],
+                    position[2]
+                ),
+                floor: level + 1
+            });
+        });
+    }
+
+    // =====================================================
+    // OBERER ABSCHLUSS
+    // =====================================================
+
+    // Kein durchgehender Deckel:
+    // Der zentrale Schacht bleibt offen.
+
+    const topPlatform = null;
+
+    // =====================================================
+    // PHYSIK-KOLLISIONEN
+    // =====================================================
 
     function registerPhysics(physics) {
 
-        if (!physics) return;
+        if (!physics) {
+            throw new Error(
+                "Bunker: Physik-System fehlt."
+            );
+        }
 
-        for (const object of collisionObjects) {
+        if (physicsRegistered) {
+            return;
+        }
 
-            physics.addBox(object, {
+        group.updateWorldMatrix(true, true);
+
+        const registered = new Set();
+
+        function registerBox(mesh) {
+
+            if (!mesh || registered.has(mesh)) {
+                return;
+            }
+
+            registered.add(mesh);
+
+            mesh.updateWorldMatrix(true, false);
+
+            const worldPosition = new THREE.Vector3();
+            const worldQuaternion = new THREE.Quaternion();
+            const worldScale = new THREE.Vector3();
+
+            mesh.getWorldPosition(worldPosition);
+            mesh.getWorldQuaternion(worldQuaternion);
+            mesh.getWorldScale(worldScale);
+
+            if (!mesh.geometry.boundingBox) {
+                mesh.geometry.computeBoundingBox();
+            }
+
+            const localSize = new THREE.Vector3();
+
+            mesh.geometry.boundingBox.getSize(localSize);
+
+            const size = new THREE.Vector3(
+                localSize.x * Math.abs(worldScale.x),
+                localSize.y * Math.abs(worldScale.y),
+                localSize.z * Math.abs(worldScale.z)
+            );
+
+            const collider = new THREE.Mesh(
+                new THREE.BoxGeometry(
+                    Math.max(size.x, 0.01),
+                    Math.max(size.y, 0.01),
+                    Math.max(size.z, 0.01)
+                )
+            );
+
+            collider.name = "Collider_" + mesh.name;
+            collider.position.copy(worldPosition);
+            collider.quaternion.copy(worldQuaternion);
+
+            physics.addBox(collider, {
                 mass: 0
             });
         }
+
+        // Wände, Fundament, Stützen und Maschinenfundament
+        for (const mesh of collisionObjects) {
+            registerBox(mesh);
+        }
+
+        // Etagenböden
+        for (const floor of floorPlatforms) {
+
+            for (const piece of floor.pieces) {
+                registerBox(piece);
+            }
+        }
+
+        // Geländerpfosten und Querstreben
+        for (const rail of railings) {
+            registerBox(rail);
+        }
+
+        for (const post of railingPosts) {
+            registerBox(post);
+        }
+
+        physicsRegistered = true;
     }
 
-    // =========================================
-    // ERGEBNIS
-    // =========================================
+    // =====================================================
+    // ETAGENINFORMATIONEN
+    // =====================================================
+
+    function getFloorHeight(floor) {
+
+        const index = Math.max(
+            0,
+            Math.min(floorCount - 1, floor - 1)
+        );
+
+        return floorHeights[index];
+    }
+
+    function getFloorInfo(floor) {
+
+        const index = Math.max(
+            0,
+            Math.min(floorCount - 1, floor - 1)
+        );
+
+        return {
+            floor: index + 1,
+            height: floorHeights[index],
+            nextHeight: floorHeights[index + 1] ?? null,
+            totalFloors: floorCount
+        };
+    }
+
+    // =====================================================
+    // RÜCKGABE
+    // =====================================================
 
     return {
 
@@ -532,20 +1002,30 @@ function createBunker(THREE, options = {}) {
 
         machinePosition,
 
-        upperPlatform,
+        upperPlatform: null,
+
+        topPlatform,
 
         stairArea,
 
+        floorPlatforms,
+
+        floorHeights,
+
+        railings,
+
+        railingPosts,
+
+        materials,
+
         registerPhysics,
 
-        materials: {
-            concrete: concreteMaterial,
-            floor: floorMaterial,
-            darkConcrete: darkConcreteMaterial,
-            metal: metalMaterial,
-            darkMetal: darkMetalMaterial,
-            yellow: yellowMaterial
-        }
+        getFloorHeight,
 
+        getFloorInfo,
+
+        get physicsRegistered() {
+            return physicsRegistered;
+        }
     };
 }
