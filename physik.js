@@ -2,34 +2,32 @@
 /*
 ====================================================
  ONE MILLION COINS
- PHYSIK.JS
+ PHYSIK.JS - ADVANCED PHYSICS
  Three.js + Cannon-es
 ====================================================
 
 Voraussetzung:
-Cannon-es muss vor dieser Datei geladen sein.
+Cannon-es muss als globales CANNON geladen sein.
 
-Diese Datei bietet:
-- Münzphysik
-- Münzen anstoßen
-- Münzen stapeln
-- Münzen rollen und umkippen
+Funktionen:
+- Realistische Münzphysik
+- Münzen stapeln und rollen
+- Reibung und Trägheit
 - Glasscherben-Physik
-- Schwerkraft
-- Reibung
-- Rückprall
-- Kollisionen
-- Boden und Wände
-- Physik-Update
+- Boxen und Zylinder
+- Stabile Kollisionen
+- Feste Physik-Zeitschritte
+- Flüssige Darstellung durch Interpolation
+- Schlafende Physikkörper
+- Impulse und Kräfte
+- Physik-Statistiken
 ====================================================
 */
 
 function createPhysics(THREE, scene, options = {}) {
 
     if (typeof CANNON === "undefined") {
-        throw new Error(
-            "Cannon-es wurde nicht geladen!"
-        );
+        throw new Error("Cannon-es wurde nicht geladen!");
     }
 
     // =========================================
@@ -41,21 +39,27 @@ function createPhysics(THREE, scene, options = {}) {
         gravity: options.gravity ?? -9.82,
 
         fixedTimeStep: 1 / 120,
-        maxSubSteps: 10,
+        maxSubSteps: 12,
+        maxFrameTime: 0.1,
 
-        solverIterations: 20,
+        solverIterations: 30,
+        solverTolerance: 0.0001,
 
         coinMass: 0.25,
-        coinFriction: 0.55,
-        coinRestitution: 0.2,
+        coinFriction: 0.38,
+        coinRestitution: 0.10,
 
-        glassFriction: 0.35,
-        glassRestitution: 0.12,
+        glassMass: 0.8,
+        glassFriction: 0.32,
+        glassRestitution: 0.08,
 
         groundFriction: 0.85,
-        groundRestitution: 0.05,
+        groundRestitution: 0.03,
 
-        maxFrameTime: 0.05
+        defaultFriction: 0.55,
+        defaultRestitution: 0.08,
+
+        allowSleep: true
     };
 
     // =========================================
@@ -66,78 +70,106 @@ function createPhysics(THREE, scene, options = {}) {
 
     world.gravity.set(0, SETTINGS.gravity, 0);
 
-    world.allowSleep = true;
+    world.allowSleep = SETTINGS.allowSleep;
 
     world.broadphase = new CANNON.SAPBroadphase(world);
 
     world.solver.iterations = SETTINGS.solverIterations;
-    world.solver.tolerance = 0.001;
+    world.solver.tolerance = SETTINGS.solverTolerance;
+
+    world.defaultContactMaterial.friction =
+        SETTINGS.defaultFriction;
+
+    world.defaultContactMaterial.restitution =
+        SETTINGS.defaultRestitution;
 
     // =========================================
     // MATERIALIEN
     // =========================================
 
-    const coinMaterial = new CANNON.Material("coin");
-    const glassMaterial = new CANNON.Material("glass");
-    const groundMaterial = new CANNON.Material("ground");
-    const defaultMaterial = new CANNON.Material("default");
+    const materials = {
+        coin: new CANNON.Material("coin"),
+        glass: new CANNON.Material("glass"),
+        ground: new CANNON.Material("ground"),
+        metal: new CANNON.Material("metal"),
+        default: new CANNON.Material("default")
+    };
 
-    world.defaultContactMaterial.friction = 0.4;
-    world.defaultContactMaterial.restitution = 0.15;
+    function addContact(a, b, friction, restitution) {
 
-    world.addContactMaterial(
-        new CANNON.ContactMaterial(
-            coinMaterial,
-            coinMaterial,
-            {
-                friction: SETTINGS.coinFriction,
-                restitution: SETTINGS.coinRestitution
-            }
-        )
+        world.addContactMaterial(
+            new CANNON.ContactMaterial(a, b, {
+                friction,
+                restitution,
+                contactEquationStiffness: 1e8,
+                contactEquationRelaxation: 3,
+                frictionEquationStiffness: 1e8,
+                frictionEquationRelaxation: 3
+            })
+        );
+    }
+
+    addContact(
+        materials.coin,
+        materials.coin,
+        SETTINGS.coinFriction,
+        SETTINGS.coinRestitution
     );
 
-    world.addContactMaterial(
-        new CANNON.ContactMaterial(
-            coinMaterial,
-            groundMaterial,
-            {
-                friction: SETTINGS.groundFriction,
-                restitution: SETTINGS.groundRestitution
-            }
-        )
+    addContact(
+        materials.coin,
+        materials.ground,
+        SETTINGS.groundFriction,
+        SETTINGS.groundRestitution
     );
 
-    world.addContactMaterial(
-        new CANNON.ContactMaterial(
-            glassMaterial,
-            groundMaterial,
-            {
-                friction: SETTINGS.glassFriction,
-                restitution: SETTINGS.glassRestitution
-            }
-        )
+    addContact(
+        materials.coin,
+        materials.glass,
+        0.32,
+        0.08
     );
 
-    world.addContactMaterial(
-        new CANNON.ContactMaterial(
-            coinMaterial,
-            glassMaterial,
-            {
-                friction: 0.4,
-                restitution: 0.15
-            }
-        )
+    addContact(
+        materials.glass,
+        materials.ground,
+        SETTINGS.glassFriction,
+        SETTINGS.glassRestitution
     );
 
-    world.addContactMaterial(
-        new CANNON.ContactMaterial(
-            defaultMaterial,
-            groundMaterial,
-            {
-                friction: 0.6,
-                restitution: 0.1
-            }
-        )
+    addContact(
+        materials.glass,
+        materials.glass,
+        0.3,
+        0.06
+    );
+
+    addContact(
+        materials.metal,
+        materials.ground,
+        0.65,
+        0.04
+    );
+
+    addContact(
+        materials.coin,
+        materials.metal,
+        0.4,
+        0.07
+    );
+
+    addContact(
+        materials.default,
+        materials.ground,
+        SETTINGS.defaultFriction,
+        SETTINGS.defaultRestitution
+    );
+
+    addContact(
+        materials.coin,
+        materials.default,
+        0.45,
+        0.08
     );
 
     // =========================================
@@ -160,13 +192,16 @@ function createPhysics(THREE, scene, options = {}) {
 
         const position = new THREE.Vector3();
         const quaternion = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
 
         object.getWorldPosition(position);
         object.getWorldQuaternion(quaternion);
+        object.getWorldScale(scale);
 
         return {
             position,
-            quaternion
+            quaternion,
+            scale
         };
     }
 
@@ -180,13 +215,37 @@ function createPhysics(THREE, scene, options = {}) {
         return size;
     }
 
-    function cannonVector(vector) {
+    function toCannonVector(vector) {
 
         return new CANNON.Vec3(
             vector.x,
             vector.y,
             vector.z
         );
+    }
+
+    function toThreeVector(vector) {
+
+        return new THREE.Vector3(
+            vector.x,
+            vector.y,
+            vector.z
+        );
+    }
+
+    function createBody(options = {}) {
+
+        return new CANNON.Body({
+            mass: options.mass ?? 1,
+            material: options.material ?? materials.default,
+
+            linearDamping: options.linearDamping ?? 0.015,
+            angularDamping: options.angularDamping ?? 0.04,
+
+            allowSleep: options.allowSleep ?? true,
+            sleepSpeedLimit: options.sleepSpeedLimit ?? 0.08,
+            sleepTimeLimit: options.sleepTimeLimit ?? 1
+        });
     }
 
     function addBody(object, body, type) {
@@ -200,14 +259,29 @@ function createPhysics(THREE, scene, options = {}) {
         const entry = {
             object,
             body,
-            type
+            type,
+
+            previousPosition: toThreeVector(body.position),
+
+            previousQuaternion: new THREE.Quaternion(
+                body.quaternion.x,
+                body.quaternion.y,
+                body.quaternion.z,
+                body.quaternion.w
+            )
         };
 
         objects.push(entry);
         bodyMap.set(object, entry);
 
+        world.broadphase.dirty = true;
+
         return entry;
     }
+
+    // =========================================
+    // OBJEKT ENTFERNEN
+    // =========================================
 
     function removeObject(object) {
 
@@ -225,30 +299,34 @@ function createPhysics(THREE, scene, options = {}) {
 
         bodyMap.delete(object);
 
+        world.broadphase.dirty = true;
+
         return true;
     }
 
     // =========================================
-    // THREE.JS POSITION AKTUALISIEREN
+    // THREE.JS SYNCHRONISIEREN
     // =========================================
 
-    function syncObject(entry) {
+    function syncObject(entry, alpha = 1) {
 
         const object = entry.object;
         const body = entry.body;
 
-        const worldPosition = new THREE.Vector3(
-            body.position.x,
-            body.position.y,
-            body.position.z
-        );
+        const currentPosition = toThreeVector(body.position);
 
-        const worldQuaternion = new THREE.Quaternion(
+        const currentQuaternion = new THREE.Quaternion(
             body.quaternion.x,
             body.quaternion.y,
             body.quaternion.z,
             body.quaternion.w
         );
+
+        const worldPosition = entry.previousPosition.clone()
+            .lerp(currentPosition, alpha);
+
+        const worldQuaternion = entry.previousQuaternion.clone()
+            .slerp(currentQuaternion, alpha);
 
         if (object.parent) {
 
@@ -270,6 +348,27 @@ function createPhysics(THREE, scene, options = {}) {
     }
 
     // =========================================
+    // VORHERIGE POSITION SPEICHERN
+    // =========================================
+
+    function savePreviousTransforms() {
+
+        for (const entry of objects) {
+
+            entry.previousPosition.copy(
+                toThreeVector(entry.body.position)
+            );
+
+            entry.previousQuaternion.set(
+                entry.body.quaternion.x,
+                entry.body.quaternion.y,
+                entry.body.quaternion.z,
+                entry.body.quaternion.w
+            );
+        }
+    }
+
+    // =========================================
     // BODEN
     // =========================================
 
@@ -281,15 +380,18 @@ function createPhysics(THREE, scene, options = {}) {
 
         const body = new CANNON.Body({
             mass: 0,
-            material: groundMaterial,
-            shape: new CANNON.Box(
+            material: materials.ground
+        });
+
+        body.addShape(
+            new CANNON.Box(
                 new CANNON.Vec3(
                     width / 2,
                     thickness / 2,
                     depth / 2
                 )
             )
-        });
+        );
 
         body.position.set(
             options.x ?? 0,
@@ -314,7 +416,7 @@ function createPhysics(THREE, scene, options = {}) {
 
         const body = new CANNON.Body({
             mass: 0,
-            material: groundMaterial
+            material: materials.ground
         });
 
         body.addShape(
@@ -350,49 +452,36 @@ function createPhysics(THREE, scene, options = {}) {
 
     function addCoin(object, options = {}) {
 
-        const radius = options.radius ?? 0.5;
-        const thickness = options.thickness ?? 0.075;
-        const mass = options.mass ?? SETTINGS.coinMass;
-
         const transform = getTransform(object);
 
-        const body = new CANNON.Body({
+        const radius = options.radius ?? 0.5;
+        const thickness = options.thickness ?? 0.075;
 
-            mass: mass,
+        const mass = options.mass ?? SETTINGS.coinMass;
 
-            material: coinMaterial,
+        const body = createBody({
+            mass,
+            material: materials.coin,
 
-            linearDamping: 0.025,
-            angularDamping: 0.08,
+            linearDamping: 0.015,
+            angularDamping: 0.055,
 
-            allowSleep: true,
-            sleepSpeedLimit: 0.12,
-            sleepTimeLimit: 1
+            sleepSpeedLimit: 0.06,
+            sleepTimeLimit: 1.2
         });
 
-        // Cannon-Zylinderachse ist Y.
+        // Cannon-Zylinder und Three.js-CylinderGeometry
+        // besitzen beide eine Y-Achse.
+        // Deshalb keine zusätzliche 90-Grad-Drehung!
+
         body.addShape(
             new CANNON.Cylinder(
                 radius,
                 radius,
                 thickness,
-                32
-            ),
-            new CANNON.Vec3(0, 0, 0),
-            new CANNON.Quaternion()
+                options.segments ?? 48
+            )
         );
-
-        // Cannon-Zylinder liegt zunächst entlang Y.
-        // Münzen sollen mit ihrer flachen Seite nach oben liegen.
-        const cylinderRotation = new CANNON.Quaternion();
-
-        cylinderRotation.setFromEuler(
-            Math.PI / 2,
-            0,
-            0
-        );
-
-        body.shapeOrientations[0].copy(cylinderRotation);
 
         body.position.set(
             transform.position.x,
@@ -432,41 +521,31 @@ function createPhysics(THREE, scene, options = {}) {
     function addGlassShard(shard, options = {}) {
 
         const size = getWorldSize(shard);
+        const transform = getTransform(shard);
 
-        const width = Math.max(size.x, 0.06);
-        const height = Math.max(size.y, 0.06);
-        const depth = Math.max(size.z, 0.025);
+        const body = createBody({
 
-        const mass =
-            options.mass ??
-            shard.userData.mass ??
-            0.8;
+            mass: options.mass ??
+                shard.userData.mass ??
+                SETTINGS.glassMass,
 
-        const body = new CANNON.Body({
+            material: materials.glass,
 
-            mass: mass,
+            linearDamping: 0.025,
+            angularDamping: 0.045,
 
-            material: glassMaterial,
-
-            linearDamping: 0.035,
-            angularDamping: 0.06,
-
-            allowSleep: true,
-            sleepSpeedLimit: 0.1,
-            sleepTimeLimit: 1
+            sleepSpeedLimit: 0.07
         });
 
         body.addShape(
             new CANNON.Box(
                 new CANNON.Vec3(
-                    width / 2,
-                    height / 2,
-                    depth / 2
+                    Math.max(size.x / 2, 0.025),
+                    Math.max(size.y / 2, 0.025),
+                    Math.max(size.z / 2, 0.015)
                 )
             )
         );
-
-        const transform = getTransform(shard);
 
         body.position.set(
             transform.position.x,
@@ -483,7 +562,6 @@ function createPhysics(THREE, scene, options = {}) {
 
         addBody(shard, body, "glass");
 
-        // Startgeschwindigkeit aus verpackung.js
         if (shard.userData.velocity) {
 
             const velocity = shard.userData.velocity;
@@ -521,7 +599,7 @@ function createPhysics(THREE, scene, options = {}) {
     }
 
     // =========================================
-    // VERPACKUNG VERBINDEN
+    // VERPACKUNG
     // =========================================
 
     function addPackaging(packaging) {
@@ -547,7 +625,7 @@ function createPhysics(THREE, scene, options = {}) {
 
         if (packaging.setOnBreak) {
 
-            packaging.setOnBreak((pieces) => {
+            packaging.setOnBreak(pieces => {
 
                 result.shards = addGlassPieces(pieces);
 
@@ -558,7 +636,7 @@ function createPhysics(THREE, scene, options = {}) {
     }
 
     // =========================================
-    // ALLGEMEINE BOX-PHYSIK
+    // BOX-PHYSIK
     // =========================================
 
     function addBox(object, options = {}) {
@@ -566,22 +644,22 @@ function createPhysics(THREE, scene, options = {}) {
         const size = getWorldSize(object);
         const transform = getTransform(object);
 
-        const body = new CANNON.Body({
+        const body = createBody({
 
             mass: options.mass ?? 1,
 
-            material: options.material ?? defaultMaterial,
+            material: options.material ?? materials.default,
 
             linearDamping: options.linearDamping ?? 0.02,
-            angularDamping: options.angularDamping ?? 0.08
+            angularDamping: options.angularDamping ?? 0.06
         });
 
         body.addShape(
             new CANNON.Box(
                 new CANNON.Vec3(
-                    Math.max(size.x / 2, 0.05),
-                    Math.max(size.y / 2, 0.05),
-                    Math.max(size.z / 2, 0.05)
+                    Math.max(size.x / 2, 0.025),
+                    Math.max(size.y / 2, 0.025),
+                    Math.max(size.z / 2, 0.025)
                 )
             )
         );
@@ -599,7 +677,93 @@ function createPhysics(THREE, scene, options = {}) {
             transform.quaternion.w
         );
 
+        body.updateMassProperties();
+
         addBody(object, body, "box");
+
+        return body;
+    }
+
+    // =========================================
+    // KUGEL-PHYSIK
+    // =========================================
+
+    function addSphere(object, options = {}) {
+
+        const transform = getTransform(object);
+
+        const radius = options.radius ?? 0.5;
+
+        const body = createBody({
+            mass: options.mass ?? 1,
+            material: options.material ?? materials.default
+        });
+
+        body.addShape(
+            new CANNON.Sphere(radius)
+        );
+
+        body.position.set(
+            transform.position.x,
+            transform.position.y,
+            transform.position.z
+        );
+
+        body.quaternion.set(
+            transform.quaternion.x,
+            transform.quaternion.y,
+            transform.quaternion.z,
+            transform.quaternion.w
+        );
+
+        body.updateMassProperties();
+
+        addBody(object, body, "sphere");
+
+        return body;
+    }
+
+    // =========================================
+    // ZYLINDER-PHYSIK
+    // =========================================
+
+    function addCylinder(object, options = {}) {
+
+        const transform = getTransform(object);
+
+        const radius = options.radius ?? 0.5;
+        const height = options.height ?? 1;
+
+        const body = createBody({
+            mass: options.mass ?? 1,
+            material: options.material ?? materials.metal
+        });
+
+        body.addShape(
+            new CANNON.Cylinder(
+                radius,
+                radius,
+                height,
+                options.segments ?? 32
+            )
+        );
+
+        body.position.set(
+            transform.position.x,
+            transform.position.y,
+            transform.position.z
+        );
+
+        body.quaternion.set(
+            transform.quaternion.x,
+            transform.quaternion.y,
+            transform.quaternion.z,
+            transform.quaternion.w
+        );
+
+        body.updateMassProperties();
+
+        addBody(object, body, "cylinder");
 
         return body;
     }
@@ -608,7 +772,7 @@ function createPhysics(THREE, scene, options = {}) {
     // OBJEKTE ANSTOSSEN
     // =========================================
 
-    function applyImpulse(object, impulse, point = null) {
+    function applyImpulse(object, impulse, worldPoint = null) {
 
         const entry = bodyMap.get(object);
 
@@ -618,15 +782,22 @@ function createPhysics(THREE, scene, options = {}) {
 
         body.wakeUp();
 
-        const impulseVector = cannonVector(impulse);
+        const impulseVector = toCannonVector(impulse);
 
-        const worldPoint = point
-            ? cannonVector(point)
-            : body.position.clone();
+        let relativePoint = new CANNON.Vec3(0, 0, 0);
+
+        if (worldPoint) {
+
+            relativePoint = new CANNON.Vec3(
+                worldPoint.x - body.position.x,
+                worldPoint.y - body.position.y,
+                worldPoint.z - body.position.z
+            );
+        }
 
         body.applyImpulse(
             impulseVector,
-            worldPoint
+            relativePoint
         );
 
         return true;
@@ -638,7 +809,7 @@ function createPhysics(THREE, scene, options = {}) {
 
     function nudgeCoins(position, radius = 2, strength = 5) {
 
-        const origin = cannonVector(position);
+        const origin = toCannonVector(position);
 
         let hitCount = 0;
 
@@ -658,13 +829,14 @@ function createPhysics(THREE, scene, options = {}) {
 
             difference.normalize();
 
-            const power = strength * (1 - distance / radius);
+            const power = strength *
+                Math.pow(1 - distance / radius, 1.5);
 
             body.wakeUp();
 
             body.applyImpulse(
                 difference.scale(power),
-                body.position
+                new CANNON.Vec3(0, 0, 0)
             );
 
             hitCount++;
@@ -674,7 +846,7 @@ function createPhysics(THREE, scene, options = {}) {
     }
 
     // =========================================
-    // EXPLOSIONSARTIGER IMPULS
+    // RADIALER IMPULS
     // =========================================
 
     function radialImpulse(position, radius = 4, strength = 10) {
@@ -683,7 +855,94 @@ function createPhysics(THREE, scene, options = {}) {
     }
 
     // =========================================
-    // DIREKTEN KÖRPER ZURÜCKGEBEN
+    // KRAFT ANWENDEN
+    // =========================================
+
+    function applyForce(object, force, worldPoint = null) {
+
+        const entry = bodyMap.get(object);
+
+        if (!entry) return false;
+
+        const body = entry.body;
+
+        body.wakeUp();
+
+        const forceVector = toCannonVector(force);
+
+        let relativePoint = new CANNON.Vec3(0, 0, 0);
+
+        if (worldPoint) {
+
+            relativePoint = new CANNON.Vec3(
+                worldPoint.x - body.position.x,
+                worldPoint.y - body.position.y,
+                worldPoint.z - body.position.z
+            );
+        }
+
+        body.applyForce(
+            forceVector,
+            relativePoint
+        );
+
+        return true;
+    }
+
+    // =========================================
+    // KÖRPER ZURÜCKSETZEN
+    // =========================================
+
+    function resetObject(object, position, quaternion = null) {
+
+        const entry = bodyMap.get(object);
+
+        if (!entry) return false;
+
+        const body = entry.body;
+
+        body.position.set(
+            position.x,
+            position.y,
+            position.z
+        );
+
+        if (quaternion) {
+
+            body.quaternion.set(
+                quaternion.x,
+                quaternion.y,
+                quaternion.z,
+                quaternion.w
+            );
+        }
+
+        body.velocity.set(0, 0, 0);
+        body.angularVelocity.set(0, 0, 0);
+
+        body.force.set(0, 0, 0);
+        body.torque.set(0, 0, 0);
+
+        body.wakeUp();
+
+        entry.previousPosition.copy(
+            toThreeVector(body.position)
+        );
+
+        entry.previousQuaternion.set(
+            body.quaternion.x,
+            body.quaternion.y,
+            body.quaternion.z,
+            body.quaternion.w
+        );
+
+        syncObject(entry, 1);
+
+        return true;
+    }
+
+    // =========================================
+    // KÖRPER ABFRAGEN
     // =========================================
 
     function getBody(object) {
@@ -715,6 +974,8 @@ function createPhysics(THREE, scene, options = {}) {
             steps < SETTINGS.maxSubSteps
         ) {
 
+            savePreviousTransforms();
+
             world.step(SETTINGS.fixedTimeStep);
 
             accumulator -= SETTINGS.fixedTimeStep;
@@ -722,73 +983,79 @@ function createPhysics(THREE, scene, options = {}) {
             steps++;
         }
 
-        // Darstellung mit Physik synchronisieren
+        // Verhindert, dass nach langen Frame-Aussetzern
+        // die Physik immer weiter hinterherläuft.
+        if (steps >= SETTINGS.maxSubSteps) {
+            accumulator = Math.min(
+                accumulator,
+                SETTINGS.fixedTimeStep
+            );
+        }
+
+        const alpha = Math.min(
+            accumulator / SETTINGS.fixedTimeStep,
+            1
+        );
+
         for (const entry of objects) {
 
             if (!entry.object || !entry.body) continue;
 
-            syncObject(entry);
+            syncObject(entry, alpha);
         }
     }
 
     // =========================================
-    // PHYSIK ZURÜCKSETZEN
-    // =========================================
-
-    function resetObject(object, position, quaternion = null) {
-
-        const body = getBody(object);
-
-        if (!body) return false;
-
-        body.position.set(
-            position.x,
-            position.y,
-            position.z
-        );
-
-        if (quaternion) {
-
-            body.quaternion.set(
-                quaternion.x,
-                quaternion.y,
-                quaternion.z,
-                quaternion.w
-            );
-        }
-
-        body.velocity.set(0, 0, 0);
-        body.angularVelocity.set(0, 0, 0);
-
-        body.force.set(0, 0, 0);
-        body.torque.set(0, 0, 0);
-
-        body.wakeUp();
-
-        syncObject(bodyMap.get(object));
-
-        return true;
-    }
-
-    // =========================================
-    // PHYSIK STATISTIK
+    // PHYSIK-STATISTIK
     // =========================================
 
     function getStats() {
 
         return {
-            bodies: world.bodies.length,
-            dynamicObjects: objects.length,
-            coins: objects.filter(o => o.type === "coin").length,
-            glassPieces: objects.filter(o => o.type === "glass").length
+            totalBodies: world.bodies.length,
+
+            trackedObjects: objects.length,
+
+            coins: objects.filter(
+                entry => entry.type === "coin"
+            ).length,
+
+            glassPieces: objects.filter(
+                entry => entry.type === "glass"
+            ).length,
+
+            boxes: objects.filter(
+                entry => entry.type === "box"
+            ).length,
+
+            sleepingBodies: world.bodies.filter(
+                body => body.sleepState === CANNON.Body.SLEEPING
+            ).length
         };
     }
 
     // =========================================
-    // ENTFERNEN
+    // EINSTELLUNGEN ÄNDERN
+    // =========================================
+
+    function setGravity(value) {
+        world.gravity.set(0, value, 0);
+    }
+
+    function wakeAll() {
+
+        for (const body of world.bodies) {
+            body.wakeUp();
+        }
+    }
+
+    // =========================================
+    // AUFRÄUMEN
     // =========================================
 
     function dispose() {
+
+        if (disposed) return;
 
         for (const entry of [...objects]) {
             removeObject(entry.object);
@@ -812,12 +1079,7 @@ function createPhysics(THREE, scene, options = {}) {
 
         world,
 
-        materials: {
-            coin: coinMaterial,
-            glass: glassMaterial,
-            ground: groundMaterial,
-            default: defaultMaterial
-        },
+        materials,
 
         createGround,
         createWall,
@@ -831,8 +1093,12 @@ function createPhysics(THREE, scene, options = {}) {
         addPackaging,
 
         addBox,
+        addSphere,
+        addCylinder,
 
         applyImpulse,
+        applyForce,
+
         nudgeCoins,
         radialImpulse,
 
@@ -840,8 +1106,12 @@ function createPhysics(THREE, scene, options = {}) {
         removeObject,
         resetObject,
 
+        setGravity,
+        wakeAll,
+
         update,
         getStats,
+
         dispose
     };
 }
