@@ -7,9 +7,7 @@
 <title>ONE MILLION COINS</title>
 
 <style>
-* {
-    box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 html, body {
     margin: 0;
@@ -239,22 +237,18 @@ canvas {
 
 <div id="hud">
     <div class="hudTitle">ONE MILLION COINS</div>
-
     <div class="hudRow">
         <span>Tasche</span>
         <span class="hudValue" id="hudCoins">0 / 25</span>
     </div>
-
     <div class="hudRow">
         <span>Eingezahlt</span>
         <span class="hudValue" id="hudDeposited">0</span>
     </div>
-
     <div class="hudRow">
         <span>Etage</span>
         <span class="hudValue" id="hudFloor">1 / 10</span>
     </div>
-
     <div class="hudRow">
         <span>Gesammelt</span>
         <span class="hudValue" id="hudCollected">0</span>
@@ -272,98 +266,112 @@ canvas {
 </div>
 
 <div id="crosshair"></div>
-
 <div id="performance">FPS: -- | Physik: --</div>
-
 <div id="toast"></div>
-
 <div id="fatalError"></div>
 
 <script type="module">
 
 // ==================================================
-// 1. THREE.JS UND CANNON-ES LADEN
+// 1. SICHERER SPIELSTART
 // ==================================================
 
-const THREE = await import(
-    "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
-);
+async function bootGame() {
 
-const CANNON = await import(
-    "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
-);
+    const loadingStatus =
+        document.getElementById("loadingStatus");
 
-window.THREE = THREE;
-window.CANNON = CANNON;
+    const THREE = await import(
+        "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+    );
 
+    const CANNON = await import(
+        "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+    );
 
-// ==================================================
-// 2. ALLE SPIELDATEIEN LADEN
-// ==================================================
+    window.THREE = THREE;
+    window.CANNON = CANNON;
 
-function loadClassicScript(src) {
+    // ==================================================
+    // 2. KLASSISCHE SPIELDATEIEN LADEN
+    // ==================================================
 
-    return new Promise((resolve, reject) => {
+    function loadClassicScript(src) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement("script");
 
-        const script = document.createElement("script");
+            script.src = src;
+            script.async = false;
 
-        script.src = src;
-        script.async = false;
+            script.onload = resolve;
 
-        script.onload = resolve;
+            script.onerror = () => {
+                reject(new Error(
+                    "Datei konnte nicht geladen werden: " + src
+                ));
+            };
 
-        script.onerror = () => {
-            reject(new Error("Datei konnte nicht geladen werden: " + src));
-        };
+            document.head.appendChild(script);
+        });
+    }
 
-        document.head.appendChild(script);
-    });
-}
+    const files = [
+        "coin.js",
+        "COIN_MILION.js",
+        "physik.js",
+        "bunker.js",
+        "treppe.js",
+        "lichter.js",
+        "band.js",
+        "trichter.js",
+        "rohr.js",
+        "verpackung.js",
+        "maschine.js",
+        "upgrades.js",
+        "heben_droppen.js",
+        "anti_lagg.js"
+    ];
 
-const files = [
+    for (let i = 0; i < files.length; i++) {
+        loadingStatus.textContent =
+            "Lade " + files[i] +
+            " (" + (i + 1) + "/" + files.length + ")";
 
-    "coin.js",
-    "COIN_MILION.js",
+        await loadClassicScript("./" + files[i]);
+    }
 
-    "physik.js",
+    // ==================================================
+    // 3. FUNKTIONSKONTROLLE
+    // ==================================================
 
-    "bunker.js",
-    "treppe.js",
+    const requiredFunctions = [
+        "createPhysics",
+        "createBunker",
+        "createBunkerStairs",
+        "createBunkerLight",
+        "createCoin",
+        "createConveyorBelt",
+        "createFunnel",
+        "createPipe",
+        "createCoinPackaging",
+        "createCoinMachine",
+        "createUpgradeSystem",
+        "createPickupSystem",
+        "createAntiLagg"
+    ];
 
-    "lichter.js",
+    for (const functionName of requiredFunctions) {
+        if (typeof window[functionName] !== "function") {
+            throw new Error(
+                "Spielsystem fehlt oder wurde nicht korrekt geladen: " +
+                functionName
+            );
+        }
+    }
 
-    "band.js",
-    "trichter.js",
-    "rohr.js",
-
-    "verpackung.js",
-
-    "maschine.js",
-
-    "upgrades.js",
-    "heben_droppen.js",
-
-    "anti_lagg.js"
-];
-
-for (let i = 0; i < files.length; i++) {
-
-    document.getElementById("loadingStatus").textContent =
-        "Lade " + files[i] + " (" + (i + 1) + "/" + files.length + ")";
-
-    await loadClassicScript("./" + files[i]);
-}
-
-
-// ==================================================
-// 3. SPIEL INITIALISIEREN
-// ==================================================
-
-function startGame() {
-
-    // ==============================================
-    // SZENE
-    // ==============================================
+    // ==================================================
+    // 4. SZENE
+    // ==================================================
 
     const scene = new THREE.Scene();
 
@@ -375,10 +383,9 @@ function startGame() {
         95
     );
 
-
-    // ==============================================
-    // KAMERA
-    // ==============================================
+    // ==================================================
+    // 5. KAMERA
+    // ==================================================
 
     const camera = new THREE.PerspectiveCamera(
         76,
@@ -389,15 +396,12 @@ function startGame() {
 
     camera.rotation.order = "YXZ";
 
-
-    // ==============================================
-    // RENDERER
-    // ==============================================
+    // ==================================================
+    // 6. RENDERER
+    // ==================================================
 
     const renderer = new THREE.WebGLRenderer({
-
         antialias: true,
-
         powerPreference: "high-performance"
     });
 
@@ -411,26 +415,18 @@ function startGame() {
     );
 
     renderer.shadowMap.enabled = true;
-
-    renderer.shadowMap.type =
-        THREE.PCFSoftShadowMap;
-
-    renderer.outputColorSpace =
-        THREE.SRGBColorSpace;
-
-    renderer.toneMapping =
-        THREE.ACESFilmicToneMapping;
-
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
 
     document.getElementById("game").appendChild(
         renderer.domElement
     );
 
-
-    // ==============================================
-    // LICHT
-    // ==============================================
+    // ==================================================
+    // 7. LICHT
+    // ==================================================
 
     const ambientLight = new THREE.HemisphereLight(
         0xc6d4e1,
@@ -446,9 +442,7 @@ function startGame() {
     );
 
     mainLight.position.set(-12, 21, 8);
-
     mainLight.castShadow = true;
-
     mainLight.shadow.mapSize.set(2048, 2048);
 
     mainLight.shadow.camera.left = -25;
@@ -458,10 +452,9 @@ function startGame() {
 
     scene.add(mainLight);
 
-
-    // ==============================================
-    // PHYSIK
-    // ==============================================
+    // ==================================================
+    // 8. PHYSIK
+    // ==================================================
 
     const physics = createPhysics(
         THREE,
@@ -471,10 +464,15 @@ function startGame() {
         }
     );
 
+    if (!physics || !physics.world) {
+        throw new Error(
+            "Das Physiksystem konnte nicht initialisiert werden."
+        );
+    }
 
-    // ==============================================
-    // BUNKER
-    // ==============================================
+    // ==================================================
+    // 9. BUNKER
+    // ==================================================
 
     const bunker = createBunker(
         THREE,
@@ -482,105 +480,156 @@ function startGame() {
             width: 32,
             depth: 32,
             height: 22,
-
             wallThickness: 1.2,
-
             floorThickness: 1.2,
-
             createCeiling: false
         }
     );
 
+    if (!bunker || !bunker.group) {
+        throw new Error(
+            "Der Bunker wurde nicht korrekt erstellt."
+        );
+    }
+
     scene.add(bunker.group);
 
-    // Statische Kollisionen des Bunkers.
-    bunker.registerPhysics(physics);
+    if (typeof bunker.registerPhysics === "function") {
+        bunker.registerPhysics(physics);
+    }
 
+    // ==================================================
+    // 10. TREPPEN
+    // ==================================================
 
-    // ==============================================
-    // TREPPEN
-    // ==============================================
+    const stairOptions = {
+        width: 1.8,
+        stepCount: 24,
+        stepDepth: 0.34,
+        stepHeight: 0.095
+    };
+
+    // Vorhandene Bunker-Treppendaten verwenden,
+    // sofern sie von bunker.js bereitgestellt werden.
+    if (
+        bunker.stairArea &&
+        bunker.stairArea.startPosition
+    ) {
+        stairOptions.startX =
+            bunker.stairArea.startPosition.x;
+
+        stairOptions.startY =
+            bunker.stairArea.startPosition.y;
+
+        stairOptions.startZ =
+            bunker.stairArea.startPosition.z;
+
+        if (bunker.stairArea.floorSpacing) {
+            stairOptions.floorHeight =
+                bunker.stairArea.floorSpacing;
+        }
+    } else {
+        stairOptions.startX = 5;
+        stairOptions.startY = 0;
+        stairOptions.startZ = -12;
+        stairOptions.floorHeight = 2.2;
+    }
+
+    if (bunker.settings && bunker.settings.floors) {
+        stairOptions.levels =
+            Math.max(1, bunker.settings.floors - 1);
+    } else {
+        stairOptions.levels = 9;
+    }
 
     const stairs = createBunkerStairs(
         THREE,
-        {
-            width: 1.5,
-
-            stepCount: 24,
-
-            stepDepth: 0.38,
-
-            stepHeight: 0.12,
-
-            floorHeight: 2.88,
-
-            levels: 4,
-
-            startX: 5,
-
-            startY: 11.8,
-
-            startZ: -12
-        }
+        stairOptions
     );
+
+    if (!stairs || !stairs.group) {
+        throw new Error(
+            "Die Treppe wurde nicht korrekt erstellt."
+        );
+    }
 
     scene.add(stairs.group);
 
+    if (typeof stairs.registerPhysics === "function") {
+        stairs.registerPhysics(physics);
+    }
 
-    // ==============================================
-    // BELEUCHTUNG IM BUNKER
-    // ==============================================
+    // ==================================================
+    // 11. BUNKERBELEUCHTUNG
+    // ==================================================
 
     const bunkerLights = [];
 
     const selectedLightPositions =
-        bunker.lightPositions.filter(
-            (_, index) => index % 2 === 0
-        );
+        Array.isArray(bunker.lightPositions)
+            ? bunker.lightPositions.filter(
+                (_, index) => index % 2 === 0
+            )
+            : [];
 
-    selectedLightPositions.forEach(position => {
+    selectedLightPositions.forEach(lightData => {
+
+        // Unterstützt beide Datenformate:
+        // Vector3 direkt oder { position: Vector3 }.
+        const lightPosition =
+            lightData && lightData.position
+                ? lightData.position
+                : lightData;
+
+        if (
+            !lightPosition ||
+            typeof lightPosition.x !== "number" ||
+            typeof lightPosition.y !== "number" ||
+            typeof lightPosition.z !== "number"
+        ) {
+            console.warn(
+                "Ungültige Bunker-Lichtposition übersprungen:",
+                lightData
+            );
+            return;
+        }
 
         const lamp = createBunkerLight(
             THREE,
             {
                 length: 1.8,
-
                 intensity: 3.2,
-
                 color: 0xffe8c5,
-
                 distance: 24,
-
                 flicker: false,
-
                 shadows: false
             }
         );
 
-        lamp.group.position.copy(position);
+        if (!lamp || !lamp.group) {
+            console.warn(
+                "Eine Bunkerlampe konnte nicht erstellt werden."
+            );
+            return;
+        }
+
+        lamp.group.position.copy(lightPosition);
 
         scene.add(lamp.group);
 
         bunkerLights.push(lamp);
     });
 
-
-    // ==============================================
-    // SPIELER-PHYSIK
-    // ==============================================
+    // ==================================================
+    // 12. SPIELER
+    // ==================================================
 
     const playerBody = new CANNON.Body({
-
         mass: 70,
-
         material: physics.materials.default,
-
         linearDamping: 0.12,
-
         angularDamping: 1,
-
         fixedRotation: true,
-
         allowSleep: false
     });
 
@@ -588,41 +637,29 @@ function startGame() {
         new CANNON.Sphere(0.45)
     );
 
-    playerBody.position.set(
-        0,
-        0.55,
-        8
-    );
-
+    playerBody.position.set(0, 0.55, 8);
     playerBody.updateMassProperties();
 
     physics.world.addBody(playerBody);
 
-
-    // ==============================================
-    // SPIELERSTEUERUNG
-    // ==============================================
+    // ==================================================
+    // 13. SPIELERSTEUERUNG
+    // ==================================================
 
     const keys = {};
 
     let yaw = 0;
     let pitch = 0;
-
     let pointerLocked = false;
 
     const playerSettings = {
-
         speed: 6.5,
-
         sprintSpeed: 10,
-
         jumpForce: 5.5,
-
         mouseSensitivity: 0.002
     };
 
     document.addEventListener("keydown", event => {
-
         keys[event.code] = true;
 
         if (
@@ -638,25 +675,21 @@ function startGame() {
         keys[event.code] = false;
     });
 
-    document.addEventListener(
-        "mousemove",
-        event => {
+    document.addEventListener("mousemove", event => {
+        if (!pointerLocked) return;
 
-            if (!pointerLocked) return;
+        yaw -= event.movementX *
+            playerSettings.mouseSensitivity;
 
-            yaw -= event.movementX *
-                playerSettings.mouseSensitivity;
+        pitch -= event.movementY *
+            playerSettings.mouseSensitivity;
 
-            pitch -= event.movementY *
-                playerSettings.mouseSensitivity;
-
-            pitch = THREE.MathUtils.clamp(
-                pitch,
-                -Math.PI / 2 + 0.05,
-                Math.PI / 2 - 0.05
-            );
-        }
-    );
+        pitch = THREE.MathUtils.clamp(
+            pitch,
+            -Math.PI / 2 + 0.05,
+            Math.PI / 2 - 0.05
+        );
+    });
 
     document.addEventListener(
         "pointerlockchange",
@@ -666,10 +699,9 @@ function startGame() {
         }
     );
 
-
-    // ==============================================
-    // INVENTAR
-    // ==============================================
+    // ==================================================
+    // 14. INVENTAR UND MELDUNGEN
+    // ==================================================
 
     const inventory = {
         coins: 0
@@ -679,8 +711,68 @@ function startGame() {
 
     const coinObjects = [];
 
-    function updateInventoryUI() {
+    let toastTimer = 0;
 
+    function showToast(message) {
+        const toast = document.getElementById("toast");
+
+        toast.textContent = message;
+        toast.classList.add("visible");
+
+        clearTimeout(toastTimer);
+
+        toastTimer = setTimeout(() => {
+            toast.classList.remove("visible");
+        }, 2200);
+    }
+
+    // ==================================================
+    // 15. UPGRADES
+    // ==================================================
+
+    const upgrades = createUpgradeSystem({
+        startSkillPoints: 0,
+
+        onSkillPoint(points) {
+            showToast(
+                "+1 SKILLPUNKT – Gesamt: " + points
+            );
+        },
+
+        onTaskComplete(level) {
+            showToast(
+                "AUFGABE " + level + " GESCHAFFT!"
+            );
+        },
+
+        onFloorProgress(data) {
+            if (data.coins === 0) {
+                showToast(
+                    "ETAGE " + data.floor + " ERREICHT!"
+                );
+            }
+        },
+
+        onUpgrade(id, stats) {
+            if (id === "vacuum_1") {
+                upgrades.setVacuumActive(true);
+                showToast("STAUBSAUGER AKTIVIERT!");
+            }
+
+            updateInventoryUI();
+        },
+
+        onMenuToggle(open) {
+            if (
+                open &&
+                document.pointerLockElement
+            ) {
+                document.exitPointerLock();
+            }
+        }
+    });
+
+    function updateInventoryUI() {
         const stats = upgrades.getStats();
 
         document.getElementById("hudCoins").textContent =
@@ -700,91 +792,38 @@ function startGame() {
             floor.floor + " / 10";
     }
 
+    // ==================================================
+    // 16. AUFHEBEN-SYSTEM FRÜH INITIALISIEREN
+    // ==================================================
+    // Muss vor der Registrierung der Kiste und Coins
+    // existieren. Sonst entsteht ein ReferenceError.
 
-    // ==============================================
-    // MELDUNGEN
-    // ==============================================
+    const pickupSystem = createPickupSystem(
+        THREE,
+        camera,
+        renderer,
+        physics,
+        {
+            maxDistance: 4,
+            holdDistance: 2.2,
+            holdHeight: -0.35,
+            throwStrength: 9,
+            smoothness: 12
+        }
+    );
 
-    let toastTimer = 0;
-
-    function showToast(message) {
-
-        const toast = document.getElementById("toast");
-
-        toast.textContent = message;
-
-        toast.classList.add("visible");
-
-        clearTimeout(toastTimer);
-
-        toastTimer = setTimeout(() => {
-
-            toast.classList.remove("visible");
-
-        }, 2200);
+    if (
+        !pickupSystem ||
+        typeof pickupSystem.register !== "function"
+    ) {
+        throw new Error(
+            "Das Aufheben-System wurde nicht korrekt erstellt."
+        );
     }
 
-
-    // ==============================================
-    // UPGRADES
-    // ==============================================
-
-    let upgrades;
-
-    upgrades = createUpgradeSystem({
-
-        startSkillPoints: 0,
-
-        onSkillPoint(points) {
-
-            showToast(
-                "+1 SKILLPUNKT – Gesamt: " + points
-            );
-        },
-
-        onTaskComplete(level) {
-
-            showToast(
-                "AUFGABE " + level + " GESCHAFFT!"
-            );
-        },
-
-        onFloorProgress(data) {
-
-            if (data.coins === 0) {
-                showToast(
-                    "ETAGE " + data.floor + " ERREICHT!"
-                );
-            }
-        },
-
-        onUpgrade(id, stats) {
-
-            if (id === "vacuum_1") {
-
-                upgrades.setVacuumActive(true);
-
-                showToast("STAUBSAUGER AKTIVIERT!");
-            }
-
-            updateInventoryUI();
-        },
-
-        onMenuToggle(open) {
-
-            if (
-                open &&
-                document.pointerLockElement
-            ) {
-                document.exitPointerLock();
-            }
-        }
-    });
-
-
-    // ==============================================
-    // MASCHINE
-    // ==============================================
+    // ==================================================
+    // 17. MASCHINE
+    // ==================================================
 
     const machine = createCoinMachine(
         THREE,
@@ -792,9 +831,7 @@ function startGame() {
             width: 2.2,
             height: 2.3,
             depth: 1.7,
-
             interactionDistance: 3.5,
-
             inventory,
 
             getCoins() {
@@ -802,7 +839,6 @@ function startGame() {
             },
 
             removeCoins(amount) {
-
                 inventory.coins = Math.max(
                     0,
                     inventory.coins - amount
@@ -812,7 +848,6 @@ function startGame() {
             },
 
             getPlayerPosition() {
-
                 return new THREE.Vector3(
                     playerBody.position.x,
                     playerBody.position.y,
@@ -821,7 +856,6 @@ function startGame() {
             },
 
             onDeposit(amount, total) {
-
                 depositedTotal += amount;
 
                 showToast(
@@ -834,14 +868,19 @@ function startGame() {
         }
     );
 
+    if (!machine || !machine.group) {
+        throw new Error(
+            "Die Coin-Maschine konnte nicht erstellt werden."
+        );
+    }
+
     machine.group.position.copy(
         bunker.machinePosition
     );
 
     scene.add(machine.group);
 
-
-    // Maschinen-Kollisionskörper.
+    // Maschinen-Kollision.
     const machineCollider = new THREE.Mesh(
         new THREE.BoxGeometry(2.2, 2.3, 1.7),
         new THREE.MeshBasicMaterial({
@@ -861,10 +900,9 @@ function startGame() {
         mass: 0
     });
 
-
-    // ==============================================
-    // FÖRDERBAND
-    // ==============================================
+    // ==================================================
+    // 18. FÖRDERBAND
+    // ==================================================
 
     const conveyor = createConveyorBelt(
         THREE,
@@ -884,10 +922,12 @@ function startGame() {
 
     scene.add(conveyor.group);
 
+    // ==================================================
+    // 19. ROHR
+    // ==================================================
 
-    // ==============================================
-    // ROHR UND TRICHTER AN DER MASCHINE
-    // ==============================================
+    // createPipe liefert eine THREE.Group direkt.
+    // Deshalb nicht machinePipe.group verwenden.
 
     const machinePipe = createPipe(
         THREE,
@@ -898,14 +938,17 @@ function startGame() {
         }
     );
 
-    machinePipe.group.position.set(
+    machinePipe.position.set(
         bunker.machinePosition.x,
         2.8,
         0
     );
 
-    scene.add(machinePipe.group);
+    scene.add(machinePipe);
 
+    // ==================================================
+    // 20. TRICHTER
+    // ==================================================
 
     const machineFunnel = createFunnel(
         THREE,
@@ -925,10 +968,9 @@ function startGame() {
 
     scene.add(machineFunnel);
 
-
-    // ==============================================
-    // MILLION-COIN-VERPACKUNG
-    // ==============================================
+    // ==================================================
+    // 21. MILLION-COIN-VERPACKUNG
+    // ==================================================
 
     const packaging = createCoinPackaging(
         THREE,
@@ -951,15 +993,12 @@ function startGame() {
         packaging
     );
 
-    // Die sichtbare Münze liegt mit ihrer flachen
-    // Seite in Z-Richtung. Cannon-Zylinder benötigt
-    // deshalb die passende lokale Ausrichtung.
     if (
         packagingPhysics &&
         packagingPhysics.coin &&
+        packagingPhysics.coin.shapeOrientations &&
         packagingPhysics.coin.shapeOrientations[0]
     ) {
-
         packagingPhysics.coin.shapeOrientations[0].setFromEuler(
             Math.PI / 2,
             0,
@@ -972,23 +1011,70 @@ function startGame() {
     renderer.domElement.addEventListener(
         "pointerdown",
         event => {
-            packaging.handlePointerDown(
-                event,
-                camera,
-                renderer
-            );
+            if (
+                typeof packaging.handlePointerDown === "function"
+            ) {
+                packaging.handlePointerDown(
+                    event,
+                    camera,
+                    renderer
+                );
+            }
         }
     );
 
+    // ==================================================
+    // 22. ANTI-LAG FRÜH INITIALISIEREN
+    // ==================================================
+    // Muss vor createPhysicalCoin() existieren.
 
-    // ==============================================
-    // STAUBSAUGER – 10 FUNNEL-POSITIONEN
-    // ==============================================
+    const antiLagg = createAntiLagg(
+        THREE,
+        scene,
+        camera,
+        renderer,
+        {
+            chunkSize: 32,
+            renderDistance: 100,
+            targetFPS: 60,
+            minimumFPS: 30,
+            autoQuality: true,
+            maxActiveChunks: 100,
+            culling: true,
+            chunkSystem: true,
+            distanceCulling: true,
+            frustumCulling: true
+        }
+    );
+
+    if (
+        !antiLagg ||
+        typeof antiLagg.registerObject !== "function"
+    ) {
+        throw new Error(
+            "Das Anti-Lag-System wurde nicht korrekt erstellt."
+        );
+    }
+
+    antiLagg.registerObject(machine.group, {
+        maxDistance: 90
+    });
+
+    antiLagg.registerObject(conveyor.group, {
+        maxDistance: 90
+    });
+
+    antiLagg.registerObject(packaging.group, {
+        maxDistance: 90
+    });
+
+    // ==================================================
+    // 23. STAUBSAUGER-TRICHTER
+    // ==================================================
 
     const floorFunnels = [];
 
     for (let i = 0; i < 10; i++) {
-
         const funnel = createFunnel(
             THREE,
             {
@@ -1010,13 +1096,13 @@ function startGame() {
         const levelGroup = new THREE.Group();
 
         levelGroup.add(funnel);
-        levelGroup.add(pipe.group);
+        levelGroup.add(pipe);
 
         const y = 1.2 + i * 2.05;
 
         funnel.position.set(0, 0.6, 0);
 
-        pipe.group.position.set(
+        pipe.position.set(
             0,
             -0.7,
             0
@@ -1035,13 +1121,11 @@ function startGame() {
         floorFunnels.push(levelGroup);
     }
 
-
-    // ==============================================
-    // PHYSIKALISCHE COINS ERZEUGEN
-    // ==============================================
+    // ==================================================
+    // 24. PHYSIKALISCHE COINS
+    // ==================================================
 
     function createPhysicalCoin(x, y, z) {
-
         const coinData = createCoin(
             THREE,
             {
@@ -1053,15 +1137,11 @@ function startGame() {
         const coin = coinData.group || coinData;
 
         coin.scale.setScalar(0.35);
-
         coin.position.set(x, y, z);
-
         coin.userData.isCoin = true;
-
         coin.name = "PhysicalCoin";
 
         coin.traverse(child => {
-
             if (child.isMesh) {
                 child.castShadow = false;
                 child.receiveShadow = true;
@@ -1080,9 +1160,11 @@ function startGame() {
             }
         );
 
-        // Ausrichtung passend zur sichtbaren Münze.
-        if (body.shapeOrientations[0]) {
-
+        if (
+            body &&
+            body.shapeOrientations &&
+            body.shapeOrientations[0]
+        ) {
             body.shapeOrientations[0].setFromEuler(
                 Math.PI / 2,
                 0,
@@ -1106,10 +1188,9 @@ function startGame() {
         return coin;
     }
 
-
-    // ==============================================
-    // KISTE ZUM AUFHEBEN UND WERFEN
-    // ==============================================
+    // ==================================================
+    // 25. KISTE
+    // ==================================================
 
     const crate = new THREE.Mesh(
         new THREE.BoxGeometry(0.9, 0.9, 0.9),
@@ -1119,12 +1200,7 @@ function startGame() {
         })
     );
 
-    crate.position.set(
-        2,
-        0.55,
-        5
-    );
-
+    crate.position.set(2, 0.55, 5);
     crate.castShadow = true;
     crate.receiveShadow = true;
 
@@ -1141,47 +1217,23 @@ function startGame() {
         throwMultiplier: 1
     });
 
-
-    // ==============================================
-    // AUFHEBEN-SYSTEM
-    // ==============================================
-
-    const pickupSystem = createPickupSystem(
-        THREE,
-        camera,
-        renderer,
-        physics,
-        {
-            maxDistance: 4,
-            holdDistance: 2.2,
-            holdHeight: -0.35,
-            throwStrength: 9,
-            smoothness: 12
-        }
-    );
-
-
-    // ==============================================
-    // COINS ERZEUGEN
-    // ==============================================
+    // ==================================================
+    // 26. COINS ERZEUGEN
+    // ==================================================
 
     for (let i = 0; i < 100; i++) {
-
         const x = (Math.random() - 0.5) * 10;
         const z = (Math.random() - 0.5) * 9;
-
         const y = 0.45 + Math.random() * 2.5;
 
         createPhysicalCoin(x, y, z);
     }
 
-
-    // ==============================================
-    // COINS ENTFERNEN
-    // ==============================================
+    // ==================================================
+    // 27. COINS ENTFERNEN
+    // ==================================================
 
     function removePhysicalCoin(coin) {
-
         if (!coin) return false;
 
         const index = coinObjects.indexOf(coin);
@@ -1189,9 +1241,7 @@ function startGame() {
         if (index === -1) return false;
 
         pickupSystem.unregister(coin);
-
         antiLagg.unregisterObject(coin);
-
         physics.removeObject(coin);
 
         if (coin.parent) {
@@ -1199,13 +1249,11 @@ function startGame() {
         }
 
         coin.traverse(child => {
-
             if (child.geometry) {
                 child.geometry.dispose();
             }
 
             if (child.material) {
-
                 const materials = Array.isArray(child.material)
                     ? child.material
                     : [child.material];
@@ -1221,16 +1269,14 @@ function startGame() {
         return true;
     }
 
-
-    // ==============================================
-    // COINS EINSAMMELN
-    // ==============================================
+    // ==================================================
+    // 28. COINS EINSAMMELN
+    // ==================================================
 
     let pointerHeld = false;
     let pickupCooldown = 0;
 
     function collectCoinsAround(target) {
-
         if (!target) return 0;
 
         const stats = upgrades.getStats();
@@ -1241,9 +1287,7 @@ function startGame() {
         );
 
         if (freeSpace <= 0) {
-
             showToast("TASCHE VOLL – ZUR MASCHINE!");
-
             return 0;
         }
 
@@ -1275,22 +1319,15 @@ function startGame() {
         let collected = 0;
 
         for (let i = 0; i < amount; i++) {
-
-            if (
-                removePhysicalCoin(
-                    candidates[i].coin
-                )
-            ) {
+            if (removePhysicalCoin(candidates[i].coin)) {
                 collected++;
             }
         }
 
         if (collected > 0) {
-
             inventory.coins += collected;
 
             upgrades.addCoins(collected);
-
             upgrades.addFloorCoins(collected);
 
             updateInventoryUI();
@@ -1299,15 +1336,12 @@ function startGame() {
         return collected;
     }
 
-
-    // ==============================================
-    // COIN-KLICK VOR DEM NORMALEN AUFHEBEN ABFANGEN
-    // ==============================================
+    // ==================================================
+    // 29. COIN-KLICK
+    // ==================================================
 
     function handleCoinPointerDown(event) {
-
         if (event.button !== 0) return;
-
         if (!pointerLocked) return;
 
         pointerHeld = true;
@@ -1316,9 +1350,9 @@ function startGame() {
 
         if (
             found &&
+            found.object &&
             found.object.userData.isCoin
         ) {
-
             event.preventDefault();
             event.stopImmediatePropagation();
 
@@ -1330,7 +1364,6 @@ function startGame() {
         pointerHeld = false;
     }
 
-    // Capture-Phase: Coins zuerst erkennen.
     renderer.domElement.addEventListener(
         "pointerdown",
         handleCoinPointerDown,
@@ -1342,107 +1375,52 @@ function startGame() {
         handlePointerUp
     );
 
-
-    // ==============================================
-    // ANTI-LAG SYSTEM
-    // ==============================================
-
-    const antiLagg = createAntiLagg(
-        THREE,
-        scene,
-        camera,
-        renderer,
-        {
-            chunkSize: 32,
-
-            renderDistance: 100,
-
-            targetFPS: 60,
-
-            minimumFPS: 30,
-
-            autoQuality: true,
-
-            maxActiveChunks: 100,
-
-            culling: true,
-
-            chunkSystem: true,
-
-            distanceCulling: true,
-
-            frustumCulling: true
-        }
-    );
-
-    antiLagg.registerObject(machine.group, {
-        maxDistance: 90
-    });
-
-    antiLagg.registerObject(conveyor.group, {
-        maxDistance: 90
-    });
-
-    antiLagg.registerObject(packaging.group, {
-        maxDistance: 90
-    });
-
-
-    // ==============================================
-    // SPIEL STARTEN
-    // ==============================================
+    // ==================================================
+    // 30. STARTBILDSCHIRM
+    // ==================================================
 
     document.getElementById("loading").style.display = "none";
 
     document.getElementById("startScreen").style.display = "flex";
 
     document.getElementById("startButton").onclick = () => {
-
         document.getElementById("startScreen").style.display = "none";
 
         renderer.domElement.requestPointerLock();
     };
 
-    renderer.domElement.addEventListener(
-        "click",
-        () => {
-
-            if (
-                !pointerLocked &&
-                !upgrades.isMenuOpen()
-            ) {
-                renderer.domElement.requestPointerLock();
-            }
+    renderer.domElement.addEventListener("click", () => {
+        if (
+            !pointerLocked &&
+            !upgrades.isMenuOpen() &&
+            document.getElementById("startScreen").style.display === "none"
+        ) {
+            renderer.domElement.requestPointerLock();
         }
-    );
+    });
 
-
-    // ==============================================
-    // SPIELZEIT UND STATISTIKEN
-    // ==============================================
+    // ==================================================
+    // 31. SPIELZEIT UND STATISTIKEN
+    // ==================================================
 
     const clock = new THREE.Clock();
 
     let fpsTimer = 0;
     let fpsFrames = 0;
     let currentFPS = 60;
-
     let statsTimer = 0;
 
-
-    // ==============================================
-    // HAUPTSCHLEIFE
-    // ==============================================
+    // ==================================================
+    // 32. HAUPTSCHLEIFE
+    // ==================================================
 
     function animate() {
-
         requestAnimationFrame(animate);
 
         const deltaTime = Math.min(
             clock.getDelta(),
             0.05
         );
-
 
         // ------------------------------------------
         // SPIELER BEWEGEN
@@ -1452,7 +1430,6 @@ function startGame() {
             pointerLocked &&
             !upgrades.isMenuOpen()
         ) {
-
             camera.rotation.set(
                 pitch,
                 yaw,
@@ -1475,12 +1452,10 @@ function startGame() {
 
             if (keys["KeyW"]) movement.add(forward);
             if (keys["KeyS"]) movement.sub(forward);
-
             if (keys["KeyD"]) movement.add(right);
             if (keys["KeyA"]) movement.sub(right);
 
             if (movement.lengthSq() > 0) {
-
                 movement.normalize();
 
                 const speed = keys["ShiftLeft"]
@@ -1492,14 +1467,11 @@ function startGame() {
 
                 playerBody.velocity.z =
                     movement.z * speed;
-
             } else {
-
                 playerBody.velocity.x *= 0.85;
                 playerBody.velocity.z *= 0.85;
             }
         }
-
 
         // ------------------------------------------
         // PHYSIK
@@ -1507,9 +1479,8 @@ function startGame() {
 
         physics.update(deltaTime);
 
-
         // ------------------------------------------
-        // KAMERA AN SPIELER
+        // KAMERA
         // ------------------------------------------
 
         camera.position.set(
@@ -1518,16 +1489,20 @@ function startGame() {
             playerBody.position.z
         );
 
+        camera.rotation.set(
+            pitch,
+            yaw,
+            0
+        );
 
         // ------------------------------------------
-        // AUFHEBEN UND TRAGEN
+        // AUFHEBEN
         // ------------------------------------------
 
         pickupSystem.update(deltaTime);
 
-
         // ------------------------------------------
-        // UPGRADES: DAUER-SAMMELN
+        // DAUER-SAMMELN
         // ------------------------------------------
 
         const upgradeStats = upgrades.getStats();
@@ -1537,7 +1512,6 @@ function startGame() {
             pointerLocked &&
             upgradeStats.holdToCollect
         ) {
-
             pickupCooldown -= deltaTime;
 
             const interval = 1 / (
@@ -1545,7 +1519,6 @@ function startGame() {
             );
 
             if (pickupCooldown <= 0) {
-
                 pickupCooldown = interval;
 
                 const found =
@@ -1553,6 +1526,7 @@ function startGame() {
 
                 if (
                     found &&
+                    found.object &&
                     found.object.userData.isCoin
                 ) {
                     collectCoinsAround(found.object);
@@ -1560,13 +1534,11 @@ function startGame() {
             }
         }
 
-
         // ------------------------------------------
         // MASCHINE
         // ------------------------------------------
 
         machine.update(deltaTime);
-
 
         // ------------------------------------------
         // FÖRDERBAND
@@ -1574,25 +1546,15 @@ function startGame() {
 
         conveyor.update(deltaTime);
 
-
         // ------------------------------------------
         // BELEUCHTUNG
         // ------------------------------------------
 
         bunkerLights.forEach(lamp => {
-            lamp.update(deltaTime);
+            if (typeof lamp.update === "function") {
+                lamp.update(deltaTime);
+            }
         });
-
-
-        // ------------------------------------------
-        // MILLION-COIN-ANIMATION
-        // ------------------------------------------
-
-        if (packaging.coin) {
-            // Die Million-Coin-Animation wird vom
-            // verpackten Coin-System separat verwaltet.
-        }
-
 
         // ------------------------------------------
         // STAUBSAUGER
@@ -1600,21 +1562,21 @@ function startGame() {
 
         const floorInfo = upgrades.getFloorInfo();
 
-        const activeFloorIndex = Math.min(
-            floorInfo.floor - 1,
-            floorFunnels.length - 1
+        const activeFloorIndex = Math.max(
+            0,
+            Math.min(
+                floorInfo.floor - 1,
+                floorFunnels.length - 1
+            )
         );
 
         floorFunnels.forEach((funnel, index) => {
-
             funnel.visible =
                 upgradeStats.vacuumEnabled &&
                 index === activeFloorIndex;
         });
 
-
         if (upgradeStats.vacuumEnabled) {
-
             const activeFunnel =
                 floorFunnels[activeFloorIndex];
 
@@ -1629,7 +1591,6 @@ function startGame() {
             const nearbyCoins = [];
 
             for (const coin of [...coinObjects]) {
-
                 const coinPosition =
                     coin.getWorldPosition(
                         new THREE.Vector3()
@@ -1648,7 +1609,6 @@ function startGame() {
                 nearbyCoins.push(coin);
 
                 if (distance > 0.1) {
-
                     difference.normalize();
 
                     const force = difference.multiplyScalar(
@@ -1662,10 +1622,6 @@ function startGame() {
                 }
             }
 
-            // Die Upgrade-Datei verwendet intern
-            // 5 / vacuumSpeed als Zeitintervall.
-            // Durch dt / 5 beginnt der Sauger mit
-            // einer Coin alle fünf Sekunden.
             upgrades.updateVacuum(
                 deltaTime / 5,
                 nearbyCoins,
@@ -1675,31 +1631,26 @@ function startGame() {
             );
         }
 
-
         // ------------------------------------------
         // ANTI-LAG
         // ------------------------------------------
 
         antiLagg.update(deltaTime);
 
-
         // ------------------------------------------
-        // INVENTAR-ANZEIGE
+        // HUD
         // ------------------------------------------
 
         updateInventoryUI();
 
-
         // ------------------------------------------
-        // PERFORMANCE-ANZEIGE
+        // FPS
         // ------------------------------------------
 
         fpsFrames++;
-
         fpsTimer += deltaTime;
 
         if (fpsTimer >= 1) {
-
             currentFPS = Math.round(
                 fpsFrames / fpsTimer
             );
@@ -1711,11 +1662,9 @@ function startGame() {
         statsTimer += deltaTime;
 
         if (statsTimer >= 0.5) {
-
             statsTimer = 0;
 
             const physicsStats = physics.getStats();
-
             const performanceStats = antiLagg.getStats();
 
             document.getElementById("performance").textContent =
@@ -1726,7 +1675,6 @@ function startGame() {
                 Math.round(performanceStats.quality * 100) + "%";
         }
 
-
         // ------------------------------------------
         // RENDERING
         // ------------------------------------------
@@ -1734,70 +1682,54 @@ function startGame() {
         renderer.render(scene, camera);
     }
 
+    // ==================================================
+    // 33. FENSTERGRÖSSE
+    // ==================================================
 
-    // ==============================================
-    // FENSTERGRÖSSE
-    // ==============================================
+    window.addEventListener("resize", () => {
+        camera.aspect =
+            window.innerWidth / window.innerHeight;
 
-    window.addEventListener(
-        "resize",
-        () => {
+        camera.updateProjectionMatrix();
 
-            camera.aspect =
-                window.innerWidth / window.innerHeight;
+        renderer.setSize(
+            window.innerWidth,
+            window.innerHeight
+        );
 
-            camera.updateProjectionMatrix();
+        renderer.setPixelRatio(
+            Math.min(window.devicePixelRatio, 1.75)
+        );
+    });
 
-            renderer.setSize(
-                window.innerWidth,
-                window.innerHeight
-            );
-
-            renderer.setPixelRatio(
-                Math.min(window.devicePixelRatio, 1.75)
-            );
-        }
-    );
-
-
-    // ==============================================
-    // START
-    // ==============================================
+    // ==================================================
+    // 34. SPIEL STARTEN
+    // ==================================================
 
     updateInventoryUI();
 
     animate();
 
-
-    // ==============================================
-    // DEBUG-ZUGRIFF
-    // ==============================================
+    // ==================================================
+    // 35. DEBUG-ZUGRIFF
+    // ==================================================
 
     window.game = {
-
         THREE,
         scene,
         camera,
         renderer,
-
         physics,
         bunker,
         stairs,
-
         machine,
         conveyor,
-
         packaging,
-
         upgrades,
         pickupSystem,
-
         antiLagg,
-
         inventory,
-
         coinObjects,
-
         playerBody,
 
         get depositedCoins() {
@@ -1815,22 +1747,17 @@ function startGame() {
     );
 }
 
-
 // ==================================================
-// 4. FEHLERBEHANDLUNG
+// 36. FEHLERBEHANDLUNG
 // ==================================================
 
-try {
-
-    startGame();
-
-} catch (error) {
-
-    console.error(error);
+bootGame().catch(error => {
+    console.error("SPIELSTART FEHLGESCHLAGEN:", error);
 
     document.getElementById("loading").style.display = "none";
 
-    const errorBox = document.getElementById("fatalError");
+    const errorBox =
+        document.getElementById("fatalError");
 
     errorBox.style.display = "block";
 
@@ -1839,9 +1766,8 @@ try {
         error.message +
         "\n\n" +
         (error.stack || "");
-}
+});
 
 </script>
-
 </body>
 </html>
