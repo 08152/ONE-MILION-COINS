@@ -27,7 +27,10 @@ function createBunker(THREE, options = {}) {
         details: options.details ?? true,
 
         stairWidth: options.stairWidth ?? 5.5,
-        stairSide: options.stairSide ?? "right"
+        stairSide: options.stairSide ?? "right",
+
+        stairOpeningWidth: options.stairOpeningWidth ?? 5.5,
+        stairOpeningDepth: options.stairOpeningDepth ?? 12
     };
 
     const W = settings.width;
@@ -35,10 +38,7 @@ function createBunker(THREE, options = {}) {
     const H = settings.height;
     const WT = settings.wallThickness;
 
-    const floorCount = Math.max(
-        2,
-        Math.floor(settings.floors)
-    );
+    const floorCount = Math.max(2, Math.floor(settings.floors));
 
     const shaftW = Math.min(settings.shaftWidth, W - 8);
     const shaftD = Math.min(settings.shaftDepth, D - 8);
@@ -61,6 +61,7 @@ function createBunker(THREE, options = {}) {
     const collisionObjects = [];
     const floorPlatforms = [];
     const floorHeights = [0];
+
     const railings = [];
     const railingPosts = [];
     const lightPositions = [];
@@ -193,12 +194,7 @@ function createBunker(THREE, options = {}) {
         return mesh;
     }
 
-    function addRail(
-        name,
-        start,
-        end,
-        radius = 0.045
-    ) {
+    function addRail(name, start, end, radius = 0.045) {
 
         const direction = new THREE.Vector3().subVectors(
             end,
@@ -230,7 +226,6 @@ function createBunker(THREE, options = {}) {
         mesh.receiveShadow = true;
 
         group.add(mesh);
-
         railings.push(mesh);
 
         return mesh;
@@ -397,9 +392,75 @@ function createBunker(THREE, options = {}) {
     // =====================================================
 
     for (let level = 1; level < floorCount; level++) {
-
         floorHeights.push(level * levelSpacing);
     }
+
+    // =====================================================
+    // TREPPENBEREICH
+    // =====================================================
+
+    const stairX = settings.stairSide === "left"
+        ? -W / 2 + WT + settings.stairWidth / 2
+        : W / 2 - WT - settings.stairWidth / 2;
+
+    const stairArea = {
+
+        side: settings.stairSide,
+
+        width: settings.stairWidth,
+
+        length: D - 5,
+
+        height: H,
+
+        floors: floorCount,
+
+        floorHeights: [...floorHeights],
+
+        floorSpacing: levelSpacing,
+
+        center: new THREE.Vector3(
+            stairX,
+            H / 2,
+            0
+        ),
+
+        wallPosition: new THREE.Vector3(
+            settings.stairSide === "left"
+                ? -W / 2 + WT
+                : W / 2 - WT,
+            H / 2,
+            0
+        ),
+
+        startPosition: new THREE.Vector3(
+            stairX,
+            0,
+            D / 2 - 3
+        ),
+
+        endPosition: new THREE.Vector3(
+            stairX,
+            H - 1.6,
+            -D / 2 + 3
+        ),
+
+        openingWidth: settings.stairOpeningWidth,
+        openingDepth: settings.stairOpeningDepth,
+
+        stairOptions: {
+            width: 1.8,
+            stepCount: 24,
+            stepDepth: 0.34,
+            stepHeight: 0.095,
+            floorHeight: levelSpacing,
+            levels: floorCount - 1,
+            startX: stairX,
+            startY: 0,
+            startZ: D / 2 - 3,
+            direction: 3
+        }
+    };
 
     // =====================================================
     // ETAGENPLATTFORMEN
@@ -443,12 +504,20 @@ function createBunker(THREE, options = {}) {
         return mesh;
     }
 
+    // =====================================================
+    // GELÄNDER
+    // =====================================================
+
     function createRailingSegment(
         name,
         start,
         end,
         postCount
     ) {
+
+        if (!settings.railingEnabled) {
+            return;
+        }
 
         const height = settings.railingHeight;
 
@@ -464,8 +533,15 @@ function createBunker(THREE, options = {}) {
         middleStart.y += height * 0.5;
         middleEnd.y += height * 0.5;
 
-        addRail(name + "_Oben", topStart, topEnd);
-        addRail(name + "_Mitte", middleStart, middleEnd);
+        const bottomStart = start.clone();
+        const bottomEnd = end.clone();
+
+        bottomStart.y += 0.12;
+        bottomEnd.y += 0.12;
+
+        addRail(name + "_Handlauf", topStart, topEnd, 0.055);
+        addRail(name + "_Mittelstrebe", middleStart, middleEnd, 0.035);
+        addRail(name + "_Unterstrebe", bottomStart, bottomEnd, 0.03);
 
         for (let i = 0; i <= postCount; i++) {
 
@@ -491,8 +567,24 @@ function createBunker(THREE, options = {}) {
             );
 
             railingPosts.push(post);
+
+            addBox(
+                name + "_Fussplatte_" + i,
+                0.16,
+                0.045,
+                0.16,
+                position.x,
+                position.y + 0.025,
+                position.z,
+                materials.darkMetal,
+                true
+            );
         }
     }
+
+    // =====================================================
+    // ETAGEN ERSTELLEN
+    // =====================================================
 
     function createFloorPlatform(level, y) {
 
@@ -505,6 +597,7 @@ function createBunker(THREE, options = {}) {
 
         const pieces = [];
 
+        // Links
         createPlatformPiece(
             floorGroup,
             "Etage_" + level + "_Links",
@@ -515,16 +608,41 @@ function createBunker(THREE, options = {}) {
             pieces
         );
 
-        createPlatformPiece(
-            floorGroup,
-            "Etage_" + level + "_Rechts",
-            sideWidth,
-            outerHalfD * 2,
-            innerHalfW + sideWidth / 2,
-            0,
-            pieces
-        );
+        // Rechts: in zwei Teile aufgeteilt.
+        // Dadurch bleibt ein Treppenbereich frei.
+        const openingDepth = settings.stairOpeningDepth;
+        const openingWidth = settings.stairOpeningWidth;
 
+        const gapHalf = openingDepth / 2;
+
+        const rightX = innerHalfW + sideWidth / 2;
+
+        const rightDepth = outerHalfD - gapHalf;
+
+        if (rightDepth > 0.5) {
+
+            createPlatformPiece(
+                floorGroup,
+                "Etage_" + level + "_Rechts_Hinten",
+                sideWidth,
+                rightDepth,
+                rightX,
+                -(outerHalfD + gapHalf) / 2,
+                pieces
+            );
+
+            createPlatformPiece(
+                floorGroup,
+                "Etage_" + level + "_Rechts_Vorne",
+                sideWidth,
+                rightDepth,
+                rightX,
+                (outerHalfD + gapHalf) / 2,
+                pieces
+            );
+        }
+
+        // Hinten
         createPlatformPiece(
             floorGroup,
             "Etage_" + level + "_Hinten",
@@ -535,6 +653,7 @@ function createBunker(THREE, options = {}) {
             pieces
         );
 
+        // Vorne
         createPlatformPiece(
             floorGroup,
             "Etage_" + level + "_Vorne",
@@ -545,37 +664,162 @@ function createBunker(THREE, options = {}) {
             pieces
         );
 
-        // Geländer um den offenen Schacht
+        // =================================================
+        // GELÄNDER AM MITTELSCHACHT
+        // =================================================
+
         if (settings.railingEnabled) {
 
             const railY = y - settings.platformThickness;
 
             createRailingSegment(
                 "Etage_" + level + "_Geländer_Hinten",
-                new THREE.Vector3(-innerHalfW, railY, -innerHalfD),
-                new THREE.Vector3(innerHalfW, railY, -innerHalfD),
+                new THREE.Vector3(
+                    -innerHalfW,
+                    railY,
+                    -innerHalfD
+                ),
+                new THREE.Vector3(
+                    innerHalfW,
+                    railY,
+                    -innerHalfD
+                ),
                 5
             );
 
             createRailingSegment(
                 "Etage_" + level + "_Geländer_Vorne",
-                new THREE.Vector3(-innerHalfW, railY, innerHalfD),
-                new THREE.Vector3(innerHalfW, railY, innerHalfD),
+                new THREE.Vector3(
+                    -innerHalfW,
+                    railY,
+                    innerHalfD
+                ),
+                new THREE.Vector3(
+                    innerHalfW,
+                    railY,
+                    innerHalfD
+                ),
                 5
             );
 
             createRailingSegment(
                 "Etage_" + level + "_Geländer_Links",
-                new THREE.Vector3(-innerHalfW, railY, -innerHalfD),
-                new THREE.Vector3(-innerHalfW, railY, innerHalfD),
+                new THREE.Vector3(
+                    -innerHalfW,
+                    railY,
+                    -innerHalfD
+                ),
+                new THREE.Vector3(
+                    -innerHalfW,
+                    railY,
+                    innerHalfD
+                ),
                 5
             );
 
             createRailingSegment(
                 "Etage_" + level + "_Geländer_Rechts",
-                new THREE.Vector3(innerHalfW, railY, -innerHalfD),
-                new THREE.Vector3(innerHalfW, railY, innerHalfD),
+                new THREE.Vector3(
+                    innerHalfW,
+                    railY,
+                    -innerHalfD
+                ),
+                new THREE.Vector3(
+                    innerHalfW,
+                    railY,
+                    innerHalfD
+                ),
                 5
+            );
+        }
+
+        // =================================================
+        // AUSSENGELÄNDER
+        // =================================================
+
+        if (settings.railingEnabled) {
+
+            const railY = y - settings.platformThickness;
+
+            const railOffset = 0.25;
+
+            createRailingSegment(
+                "Aussengeländer_Hinten_" + level,
+                new THREE.Vector3(
+                    -outerHalfW,
+                    railY,
+                    -outerHalfD + railOffset
+                ),
+                new THREE.Vector3(
+                    outerHalfW,
+                    railY,
+                    -outerHalfD + railOffset
+                ),
+                15
+            );
+
+            createRailingSegment(
+                "Aussengeländer_Vorne_" + level,
+                new THREE.Vector3(
+                    -outerHalfW,
+                    railY,
+                    outerHalfD - railOffset
+                ),
+                new THREE.Vector3(
+                    outerHalfW,
+                    railY,
+                    outerHalfD - railOffset
+                ),
+                15
+            );
+
+            createRailingSegment(
+                "Aussengeländer_Links_" + level,
+                new THREE.Vector3(
+                    -outerHalfW + railOffset,
+                    railY,
+                    -outerHalfD
+                ),
+                new THREE.Vector3(
+                    -outerHalfW + railOffset,
+                    railY,
+                    outerHalfD
+                ),
+                15
+            );
+
+            // Rechts nur außerhalb der Treppenöffnung.
+            const openingStart = -gapHalf;
+            const openingEnd = gapHalf;
+
+            createRailingSegment(
+                "Aussengeländer_Rechts_Hinten_" + level,
+                new THREE.Vector3(
+                    outerHalfW - railOffset,
+                    railY,
+                    -outerHalfD
+                ),
+                new THREE.Vector3(
+                    outerHalfW - railOffset,
+                    railY,
+                    openingStart
+                ),
+                6
+            );
+
+            createRailingSegment(
+                "Aussengeländer_Rechts_Vorne_" + level,
+                new THREE.Vector3(
+                    outerHalfW - railOffset,
+                    railY,
+                    openingEnd
+                ),
+                new THREE.Vector3(
+                    outerHalfW - railOffset,
+                    railY,
+                    outerHalfD
+                ),
+                6
             );
         }
 
@@ -594,134 +838,6 @@ function createBunker(THREE, options = {}) {
             floorHeights[level]
         );
     }
-
-    // =====================================================
-    // AUSSENGELÄNDER AN DEN PLATTFORMEN
-    // =====================================================
-
-    if (settings.railingEnabled) {
-
-        for (let level = 1; level < floorCount; level++) {
-
-            const y = floorHeights[level] - settings.platformThickness;
-
-            const railOffset = 0.25;
-
-            createRailingSegment(
-                "Aussengeländer_Hinten_" + level,
-                new THREE.Vector3(
-                    -outerHalfW,
-                    y,
-                    -outerHalfD + railOffset
-                ),
-                new THREE.Vector3(
-                    outerHalfW,
-                    y,
-                    -outerHalfD + railOffset
-                ),
-                15
-            );
-
-            createRailingSegment(
-                "Aussengeländer_Vorne_" + level,
-                new THREE.Vector3(
-                    -outerHalfW,
-                    y,
-                    outerHalfD - railOffset
-                ),
-                new THREE.Vector3(
-                    outerHalfW,
-                    y,
-                    outerHalfD - railOffset
-                ),
-                15
-            );
-
-            createRailingSegment(
-                "Aussengeländer_Links_" + level,
-                new THREE.Vector3(
-                    -outerHalfW + railOffset,
-                    y,
-                    -outerHalfD
-                ),
-                new THREE.Vector3(
-                    -outerHalfW + railOffset,
-                    y,
-                    outerHalfD
-                ),
-                15
-            );
-
-            createRailingSegment(
-                "Aussengeländer_Rechts_" + level,
-                new THREE.Vector3(
-                    outerHalfW - railOffset,
-                    y,
-                    -outerHalfD
-                ),
-                new THREE.Vector3(
-                    outerHalfW - railOffset,
-                    y,
-                    outerHalfD
-                ),
-                15
-            );
-        }
-    }
-
-    // =====================================================
-    // TREPPENBEREICH
-    // =====================================================
-
-    const stairX = settings.stairSide === "left"
-        ? -W / 2 + WT + settings.stairWidth / 2
-        : W / 2 - WT - settings.stairWidth / 2;
-
-    const stairArea = {
-
-        side: settings.stairSide,
-
-        width: settings.stairWidth,
-
-        length: D - 5,
-
-        height: H,
-
-        floors: floorCount,
-
-        floorHeights: [...floorHeights],
-
-        center: new THREE.Vector3(
-            stairX,
-            H / 2,
-            0
-        ),
-
-        wallPosition: new THREE.Vector3(
-            settings.stairSide === "left"
-                ? -W / 2 + WT
-                : W / 2 - WT,
-            H / 2,
-            0
-        ),
-
-        startPosition: new THREE.Vector3(
-            stairX,
-            0,
-            D / 2 - 3
-        ),
-
-        endPosition: new THREE.Vector3(
-            stairX,
-            H - 1.6,
-            -D / 2 + 3
-        ),
-
-        floorSpacing: levelSpacing,
-
-        shaftWidth: shaftW,
-        shaftDepth: shaftD
-    };
 
     // =====================================================
     // MASCHINENFUNDAMENT
@@ -776,7 +892,7 @@ function createBunker(THREE, options = {}) {
     }
 
     // =====================================================
-    // WANDDETAILS
+    // TECHNISCHE WANDDETAILS
     // =====================================================
 
     if (settings.details) {
@@ -855,11 +971,8 @@ function createBunker(THREE, options = {}) {
     }
 
     // =====================================================
-    // OBERER ABSCHLUSS
+    // KEIN DECKEL ÜBER DEM MITTELSCHACHT
     // =====================================================
-
-    // Kein durchgehender Deckel:
-    // Der zentrale Schacht bleibt offen.
 
     const topPlatform = null;
 
@@ -923,7 +1036,8 @@ function createBunker(THREE, options = {}) {
                 )
             );
 
-            collider.name = "Collider_" + mesh.name;
+            collider.name = "BunkerCollider_" + mesh.name;
+
             collider.position.copy(worldPosition);
             collider.quaternion.copy(worldQuaternion);
 
@@ -932,12 +1046,12 @@ function createBunker(THREE, options = {}) {
             });
         }
 
-        // Wände, Fundament, Stützen und Maschinenfundament
+        // Wände, Fundament, Stützen, Maschinenfundament
         for (const mesh of collisionObjects) {
             registerBox(mesh);
         }
 
-        // Etagenböden
+        // Alle Etagenböden
         for (const floor of floorPlatforms) {
 
             for (const piece of floor.pieces) {
@@ -945,7 +1059,7 @@ function createBunker(THREE, options = {}) {
             }
         }
 
-        // Geländerpfosten und Querstreben
+        // Geländer und Pfosten
         for (const rail of railings) {
             registerBox(rail);
         }
